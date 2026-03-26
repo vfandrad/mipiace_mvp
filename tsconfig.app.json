@@ -1,14 +1,22 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "ESNext",
-    "lib": ["ES2020", "DOM"],
     "jsx": "react-jsx",
+    "lib": [
+      "ES2020",
+      "DOM"
+    ],
+    "module": "ESNext",
     "moduleResolution": "node",
-    "strict": false,
+    "paths": {
+      "@/*": [
+        "src/*"
+      ]
+    },
     "skipLibCheck": true,
-    "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] }
+    "strict": false,
+    "target": "ES2020"
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }
