@@ -9,7 +9,7 @@
     "moduleResolution": "node",
     "paths": {
       "@/*": [
-        "src/*"
+        "./src/*"
       ]
     },
     "skipLibCheck": true,
