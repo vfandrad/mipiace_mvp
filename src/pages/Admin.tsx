@@ -1,11 +1,10 @@
 /**
  * Página de Dashboard (Admin)
  * Exibe KPIs, gráficos e pedidos recentes
- * Protegida por senha simples
+ * Acessível somente via URL /admin
  */
 
 import { Header } from '@/components/layout/Header';
-import { PasswordGate } from '@/components/auth/PasswordGate';
 import { KPICard } from '@/components/dashboard/KPICard';
 import { SalesChart } from '@/components/dashboard/SalesChart';
 import { ProductsChart } from '@/components/dashboard/ProductsChart';
@@ -24,7 +23,6 @@ import { DollarSign, ShoppingCart, TrendingUp, Package } from 'lucide-react';
 const Admin = () => {
   const kpis = calculateKPIs();
 
-  // Conta pedidos por status para o painel de produção
   const ordersByStatus = {
     novo: mockOrders.filter(o => o.status === 'novo').length,
     producao: mockOrders.filter(o => o.status === 'producao').length,
@@ -33,12 +31,10 @@ const Admin = () => {
   };
 
   return (
-    <PasswordGate>
-      <div className="min-h-screen bg-background">
-        <Header />
+    <div className="min-h-screen bg-background">
+      <Header />
       
       <main className="container py-6 space-y-6">
-        {/* Cabeçalho da página */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
@@ -47,7 +43,6 @@ const Admin = () => {
           <DateFilter />
         </div>
 
-        {/* Cards de KPI */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <KPICard
             title="Vendas Hoje"
@@ -82,17 +77,14 @@ const Admin = () => {
           />
         </div>
 
-        {/* Gráficos - Linha 1 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <SalesChart data={mockSalesData} />
           <ProductsChart data={mockProductSales} />
         </div>
 
-        {/* Gráficos - Linha 2 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <HourlyChart data={mockHourlySales} />
           
-          {/* Painel de Status de Produção */}
           <div className="kpi-card">
             <h3 className="font-semibold mb-4">Status de Produção</h3>
             <div className="grid grid-cols-2 gap-4">
@@ -116,11 +108,9 @@ const Admin = () => {
           </div>
         </div>
 
-        {/* Tabela de Pedidos Recentes */}
         <RecentOrders orders={mockOrders} />
       </main>
-      </div>
-    </PasswordGate>
+    </div>
   );
 };
 

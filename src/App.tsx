@@ -11,6 +11,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import Admin from "./pages/Admin";
 import Loja from "./pages/Loja";
+import Produtos from "./pages/Produtos";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -18,16 +19,15 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      {/* Sistemas de notificação */}
       <Toaster />
       <Sonner />
       
-      {/* Rotas da aplicação */}
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/loja" element={<Loja />} />
+          <Route path="/produtos" element={<Produtos />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
