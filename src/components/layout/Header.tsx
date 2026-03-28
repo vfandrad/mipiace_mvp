@@ -3,7 +3,7 @@
  * Navegação com indicador deslizante animado (estilo Stripe/Apple)
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useCallback, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Store, Package } from 'lucide-react';
@@ -17,45 +17,62 @@ const NAV_ITEMS = [
 export function Header() {
   const location = useLocation();
   const navRef = useRef<HTMLDivElement>(null);
-  const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 });
+  const itemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
+  const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number } | null>(null);
+  const [logoLoaded, setLogoLoaded] = useState(false);
 
-  // Calcula posição do indicador deslizante
-  useEffect(() => {
-    if (!navRef.current) return;
-    const activeIndex = NAV_ITEMS.findIndex(item => item.path === location.pathname);
-    if (activeIndex === -1) {
-      setIndicatorStyle({ left: 0, width: 0 });
+  const activeIndex = NAV_ITEMS.findIndex(item => item.path === location.pathname);
+
+  const updateIndicator = useCallback(() => {
+    if (activeIndex === -1 || !navRef.current) {
+      setIndicatorStyle(null);
       return;
     }
-    const buttons = navRef.current.querySelectorAll<HTMLAnchorElement>('[data-nav-item]');
-    const activeBtn = buttons[activeIndex];
+    const activeBtn = itemRefs.current[activeIndex];
     if (activeBtn) {
+      const navRect = navRef.current.getBoundingClientRect();
+      const btnRect = activeBtn.getBoundingClientRect();
       setIndicatorStyle({
-        left: activeBtn.offsetLeft,
-        width: activeBtn.offsetWidth,
+        left: btnRect.left - navRect.left,
+        width: btnRect.width,
       });
     }
-  }, [location.pathname]);
+  }, [activeIndex]);
 
-  const isNavActive = NAV_ITEMS.some(item => item.path === location.pathname);
+  // Recalcula posição do indicador quando muda a rota ou o layout
+  useLayoutEffect(() => {
+    updateIndicator();
+
+    // Observa mudanças de tamanho (ex: breakpoint mobile/desktop)
+    const observer = new ResizeObserver(updateIndicator);
+    if (navRef.current) observer.observe(navRef.current);
+    return () => observer.disconnect();
+  }, [updateIndicator]);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-card/80 backdrop-blur-sm">
       <div className="container flex h-16 items-center justify-between">
         <Link to="/" className="flex items-center gap-2">
-          <img src={logoMiPiace} alt="Mi Piace Gelato" className="h-10 object-contain" />
+          <img
+            src={logoMiPiace}
+            alt="Mi Piace Gelato"
+            className={cn('h-10 object-contain transition-opacity duration-300', logoLoaded ? 'opacity-100' : 'opacity-0')}
+            onLoad={() => setLogoLoaded(true)}
+            loading="eager"
+            decoding="async"
+          />
         </Link>
 
-        <nav ref={navRef} className="relative flex items-center gap-1 bg-secondary rounded-lg p-1">
+        <nav ref={navRef} className="relative flex items-center bg-secondary rounded-lg p-1">
           {/* Indicador deslizante */}
-          {isNavActive && (
+          {indicatorStyle && (
             <div
               className="absolute top-1 bottom-1 rounded-md bg-primary shadow-sm transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]"
               style={{ left: indicatorStyle.left, width: indicatorStyle.width }}
             />
           )}
 
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.map((item, i) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
 
@@ -63,7 +80,7 @@ export function Header() {
               <Link
                 key={item.path}
                 to={item.path}
-                data-nav-item
+                ref={(el) => { itemRefs.current[i] = el; }}
                 className={cn(
                   'relative z-10 flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200',
                   isActive
