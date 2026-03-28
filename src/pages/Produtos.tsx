@@ -227,7 +227,7 @@ const Produtos = () => {
                       R$ {product.preco.toFixed(2)}
                     </TableCell>
                     <TableCell className="text-center">
-                      <span className={`inline-block w-2 h-2 rounded-full ${product.disponivel ? 'bg-green-500' : 'bg-red-400'}`} />
+                      <span className={`inline-block w-3 h-3 rounded-full ${product.disponivel ? 'bg-[hsl(var(--status-ready))]' : 'bg-[hsl(var(--destructive))]'}`} />
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
