@@ -221,7 +221,6 @@ const Produtos = () => {
                 products.map(product => (
                   <TableRow key={product.id}>
                     <TableCell className="font-medium">{product.nome}</TableCell>
-                    <TableCell>{product.categoria}</TableCell>
                     <TableCell className="text-right">
                       R$ {product.preco.toFixed(2)}
                     </TableCell>
