@@ -9,8 +9,6 @@ import { KanbanColumn } from '@/components/production/KanbanColumn';
 import { Order, OrderStatus } from '@/types/order';
 import { mockOrders } from '@/lib/mock-data';
 import { useToast } from '@/hooks/use-toast';
-import { RefreshCw } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 
 // Labels amigáveis para cada status (usado no toast)
 const STATUS_LABELS: Record<OrderStatus, string> = {
