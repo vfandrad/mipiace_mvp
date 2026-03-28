@@ -5,12 +5,7 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { CalendarIcon } from 'lucide-react';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 
 type Period = 'today' | 'week' | 'month' | 'custom';
 
@@ -56,32 +51,6 @@ export function DateFilter({ onPeriodChange }: DateFilterProps) {
         ))}
       </div>
 
-      {/* Seletor de data personalizada */}
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            size="sm"
-            className={cn('gap-2', period === 'custom' && 'bg-secondary')}
-          >
-            <CalendarIcon className="h-4 w-4" />
-            {period === 'custom' && date
-              ? format(date, 'dd MMM yyyy', { locale: ptBR })
-              : 'Personalizado'}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
-          <Calendar
-            mode="single"
-            selected={date}
-            onSelect={(newDate) => {
-              setDate(newDate);
-              handlePeriodChange('custom');
-            }}
-            initialFocus
-          />
-        </PopoverContent>
-      </Popover>
     </div>
   );
 }

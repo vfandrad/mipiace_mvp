@@ -9,8 +9,6 @@ import { KanbanColumn } from '@/components/production/KanbanColumn';
 import { Order, OrderStatus } from '@/types/order';
 import { mockOrders } from '@/lib/mock-data';
 import { useToast } from '@/hooks/use-toast';
-import { RefreshCw } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 
 // Labels amigáveis para cada status (usado no toast)
 const STATUS_LABELS: Record<OrderStatus, string> = {
@@ -58,10 +56,6 @@ const Loja = () => {
             <h1 className="text-2xl font-bold tracking-tight">Produção</h1>
             <p className="text-muted-foreground">Gerencie o fluxo de pedidos</p>
           </div>
-          <Button variant="outline" size="sm" className="gap-2">
-            <RefreshCw className="h-4 w-4" />
-            Atualizar
-          </Button>
         </div>
 
         {/* Quadro Kanban */}

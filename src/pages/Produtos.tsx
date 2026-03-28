@@ -127,8 +127,8 @@ const Produtos = () => {
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={handleNew}>
-                <Plus className="h-4 w-4 mr-2" />
-                Novo Produto
+                <Plus className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Novo Produto</span>
               </Button>
             </DialogTrigger>
 
@@ -205,7 +205,6 @@ const Produtos = () => {
             <TableHeader>
               <TableRow>
                 <TableHead>Nome</TableHead>
-                <TableHead>Categoria</TableHead>
                 <TableHead className="text-right">Preço</TableHead>
                 <TableHead className="text-center">Disponível</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
@@ -214,7 +213,7 @@ const Produtos = () => {
             <TableBody>
               {products.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
                     Nenhum produto cadastrado
                   </TableCell>
                 </TableRow>
@@ -222,12 +221,11 @@ const Produtos = () => {
                 products.map(product => (
                   <TableRow key={product.id}>
                     <TableCell className="font-medium">{product.nome}</TableCell>
-                    <TableCell>{product.categoria}</TableCell>
                     <TableCell className="text-right">
                       R$ {product.preco.toFixed(2)}
                     </TableCell>
                     <TableCell className="text-center">
-                      <span className={`inline-block w-2 h-2 rounded-full ${product.disponivel ? 'bg-green-500' : 'bg-red-400'}`} />
+                      <span className={`inline-block w-3 h-3 rounded-full ${product.disponivel ? 'bg-[hsl(var(--status-ready))]' : 'bg-[hsl(var(--destructive))]'}`} />
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
