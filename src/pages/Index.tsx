@@ -9,7 +9,7 @@ const Index = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    navigate('/admin');
+    navigate('/loja');
   }, [navigate]);
 
   // Loading enquanto redireciona

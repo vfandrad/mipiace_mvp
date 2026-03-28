@@ -127,8 +127,8 @@ const Produtos = () => {
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={handleNew}>
-                <Plus className="h-4 w-4 mr-2" />
-                Novo Produto
+                <Plus className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Novo Produto</span>
               </Button>
             </DialogTrigger>
 
