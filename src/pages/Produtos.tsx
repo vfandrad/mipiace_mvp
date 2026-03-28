@@ -205,7 +205,6 @@ const Produtos = () => {
             <TableHeader>
               <TableRow>
                 <TableHead>Nome</TableHead>
-                <TableHead>Categoria</TableHead>
                 <TableHead className="text-right">Preço</TableHead>
                 <TableHead className="text-center">Disponível</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
