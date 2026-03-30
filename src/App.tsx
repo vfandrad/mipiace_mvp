@@ -1,14 +1,12 @@
 /**
- * App principal
- * Configura providers globais e rotas da aplicação
+ * App principal — configura rotas e providers globais
  */
 
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Admin from "./pages/Admin";
 import Loja from "./pages/Loja";
 import Produtos from "./pages/Produtos";
@@ -21,10 +19,10 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Index />} />
+          {/* Redireciona "/" para "/loja" */}
+          <Route path="/" element={<Navigate to="/loja" replace />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/loja" element={<Loja />} />
           <Route path="/produtos" element={<Produtos />} />

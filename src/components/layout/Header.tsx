@@ -1,6 +1,5 @@
 /**
- * Header principal da aplicação
- * Navegação com indicador deslizante animado (estilo Stripe/Apple)
+ * Header com navegação e indicador deslizante animado
  */
 
 import { useLayoutEffect, useCallback, useRef, useState } from 'react';
@@ -15,35 +14,30 @@ const NAV_ITEMS = [
 ];
 
 export function Header() {
-  const location = useLocation();
+  const { pathname } = useLocation();
   const navRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLAnchorElement | null)[]>([]);
-  const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number } | null>(null);
-  const [logoLoaded, setLogoLoaded] = useState(false);
+  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
 
-  const activeIndex = NAV_ITEMS.findIndex(item => item.path === location.pathname);
+  const activeIndex = NAV_ITEMS.findIndex(item => item.path === pathname);
 
+  // Calcula posição do indicador com base no botão ativo
   const updateIndicator = useCallback(() => {
     if (activeIndex === -1 || !navRef.current) {
-      setIndicatorStyle(null);
+      setIndicator(null);
       return;
     }
-    const activeBtn = itemRefs.current[activeIndex];
-    if (activeBtn) {
-      const navRect = navRef.current.getBoundingClientRect();
-      const btnRect = activeBtn.getBoundingClientRect();
-      setIndicatorStyle({
-        left: btnRect.left - navRect.left,
-        width: btnRect.width,
-      });
-    }
+    const btn = itemRefs.current[activeIndex];
+    if (!btn) return;
+
+    const navRect = navRef.current.getBoundingClientRect();
+    const btnRect = btn.getBoundingClientRect();
+    setIndicator({ left: btnRect.left - navRect.left, width: btnRect.width });
   }, [activeIndex]);
 
-  // Recalcula posição do indicador quando muda a rota ou o layout
+  // Recalcula ao mudar rota ou ao redimensionar
   useLayoutEffect(() => {
     updateIndicator();
-
-    // Observa mudanças de tamanho (ex: breakpoint mobile/desktop)
     const observer = new ResizeObserver(updateIndicator);
     if (navRef.current) observer.observe(navRef.current);
     return () => observer.disconnect();
@@ -53,39 +47,29 @@ export function Header() {
     <header className="sticky top-0 z-50 w-full border-b border-border bg-card/80 backdrop-blur-sm">
       <div className="container flex h-16 items-center justify-between">
         <Link to="/" className="flex items-center gap-2">
-          <img
-            src={logoMiPiace}
-            alt="Mi Piace Gelato"
-            className={cn('h-10 object-contain transition-opacity duration-300', logoLoaded ? 'opacity-100' : 'opacity-0')}
-            onLoad={() => setLogoLoaded(true)}
-            loading="eager"
-            decoding="async"
-          />
+          <img src={logoMiPiace} alt="Mi Piace Gelato" className="h-10 object-contain" />
         </Link>
 
         <nav ref={navRef} className="relative flex items-center bg-secondary rounded-lg p-1">
           {/* Indicador deslizante */}
-          {indicatorStyle && (
+          {indicator && (
             <div
               className="absolute top-1 bottom-1 rounded-md bg-primary shadow-sm transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]"
-              style={{ left: indicatorStyle.left, width: indicatorStyle.width }}
+              style={{ left: indicator.left, width: indicator.width }}
             />
           )}
 
           {NAV_ITEMS.map((item, i) => {
             const Icon = item.icon;
-            const isActive = location.pathname === item.path;
-
+            const isActive = pathname === item.path;
             return (
               <Link
                 key={item.path}
                 to={item.path}
-                ref={(el) => { itemRefs.current[i] = el; }}
+                ref={el => { itemRefs.current[i] = el; }}
                 className={cn(
                   'relative z-10 flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200',
-                  isActive
-                    ? 'text-primary-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
+                  isActive ? 'text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
                 )}
               >
                 <Icon className="h-4 w-4" />
@@ -95,6 +79,7 @@ export function Header() {
           })}
         </nav>
 
+        {/* Espaçador para centralizar a nav */}
         <div className="w-10" />
       </div>
     </header>
