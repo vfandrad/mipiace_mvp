@@ -1,6 +1,6 @@
 /**
  * Dashboard (Admin) — KPIs, gráficos e pedidos recentes
- * Acessível apenas via /admin
+ * Dados de pedidos vêm da API; dados de vendas continuam mock (sem endpoint de dashboard na API)
  */
 
 import { Header } from '@/components/layout/Header';
@@ -10,18 +10,21 @@ import { ProductsChart } from '@/components/dashboard/ProductsChart';
 import { HourlyChart } from '@/components/dashboard/HourlyChart';
 import { DateFilter } from '@/components/dashboard/DateFilter';
 import { RecentOrders } from '@/components/dashboard/RecentOrders';
-import { mockSalesData, mockProductSales, mockHourlySales, mockOrders, calculateKPIs } from '@/lib/mock-data';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useOrders } from '@/hooks/use-orders';
+import { mockSalesData, mockProductSales, mockHourlySales, calculateKPIs } from '@/lib/mock-data';
 import { DollarSign, ShoppingCart, TrendingUp, Package } from 'lucide-react';
 
 const Admin = () => {
+  const { orders, isLoading } = useOrders();
   const kpis = calculateKPIs();
 
-  // Conta pedidos por status para o painel de produção
+  // Conta pedidos por status usando dados reais da API
   const statusCount = {
-    novo: mockOrders.filter(o => o.status === 'novo').length,
-    producao: mockOrders.filter(o => o.status === 'producao').length,
-    pronto: mockOrders.filter(o => o.status === 'pronto').length,
-    entregue: mockOrders.filter(o => o.status === 'entregue').length,
+    novo: orders.filter(o => o.status === 'novo').length,
+    producao: orders.filter(o => o.status === 'producao').length,
+    pronto: orders.filter(o => o.status === 'pronto').length,
+    entregue: orders.filter(o => o.status === 'entregue').length,
   };
 
   return (
@@ -54,23 +57,33 @@ const Admin = () => {
           <HourlyChart data={mockHourlySales} />
           <div className="kpi-card">
             <h3 className="font-semibold mb-4">Status de Produção</h3>
-            <div className="grid grid-cols-2 gap-4">
-              {([
-                { key: 'novo', label: 'Novos', bg: 'bg-status-new-bg', text: 'text-status-new' },
-                { key: 'producao', label: 'Em Produção', bg: 'bg-status-production-bg', text: 'text-status-production' },
-                { key: 'pronto', label: 'Prontos', bg: 'bg-status-ready-bg', text: 'text-status-ready' },
-                { key: 'entregue', label: 'Entregues', bg: 'bg-status-delivered-bg', text: 'text-status-delivered' },
-              ] as const).map(s => (
-                <div key={s.key} className={`p-4 rounded-lg ${s.bg}`}>
-                  <p className={`text-3xl font-bold ${s.text}`}>{statusCount[s.key]}</p>
-                  <p className={`text-sm ${s.text}/80 mt-1`}>{s.label}</p>
-                </div>
-              ))}
-            </div>
+            {isLoading ? (
+              <div className="grid grid-cols-2 gap-4">
+                {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-20 rounded-lg" />)}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                {([
+                  { key: 'novo', label: 'Novos', bg: 'bg-status-new-bg', text: 'text-status-new' },
+                  { key: 'producao', label: 'Em Produção', bg: 'bg-status-production-bg', text: 'text-status-production' },
+                  { key: 'pronto', label: 'Prontos', bg: 'bg-status-ready-bg', text: 'text-status-ready' },
+                  { key: 'entregue', label: 'Entregues', bg: 'bg-status-delivered-bg', text: 'text-status-delivered' },
+                ] as const).map(s => (
+                  <div key={s.key} className={`p-4 rounded-lg ${s.bg}`}>
+                    <p className={`text-3xl font-bold ${s.text}`}>{statusCount[s.key]}</p>
+                    <p className={`text-sm ${s.text}/80 mt-1`}>{s.label}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
-        <RecentOrders orders={mockOrders} />
+        {isLoading ? (
+          <Skeleton className="h-48 rounded-lg" />
+        ) : (
+          <RecentOrders orders={orders} />
+        )}
       </main>
     </div>
   );

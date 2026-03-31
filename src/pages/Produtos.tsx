@@ -1,5 +1,6 @@
 /**
- * Página de Produtos — CRUD local para gerenciar o cardápio
+ * Página de Produtos — CRUD para gerenciar o cardápio
+ * Dados vêm da API real via useProducts
  */
 
 import { useState } from 'react';
@@ -8,47 +9,22 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-
-interface Product {
-  id: string;
-  nome: string;
-  preco: number;
-  disponivel: boolean;
-}
-
-const INITIAL_PRODUCTS: Product[] = [
-  { id: '1', nome: 'Gelato Pistache', preco: 18.90, disponivel: true },
-  { id: '2', nome: 'Gelato Chocolate Belga', preco: 16.90, disponivel: true },
-  { id: '3', nome: 'Picolé Maracujá', preco: 8.90, disponivel: false },
-  { id: '4', nome: 'Açaí 500ml', preco: 22.90, disponivel: true },
-];
+import { useProducts, Product } from '@/hooks/use-products';
 
 const EMPTY_FORM = { nome: '', preco: '', disponivel: true };
 
 const Produtos = () => {
-  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  const { products, isLoading, addProduct, removeProduct, isSaving } = useProducts();
   const [form, setForm] = useState(EMPTY_FORM);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const { toast } = useToast();
 
-  const openNew = () => {
-    setForm(EMPTY_FORM);
-    setEditingId(null);
-    setDialogOpen(true);
-  };
-
-  const openEdit = (p: Product) => {
-    setForm({ nome: p.nome, preco: p.preco.toString(), disponivel: p.disponivel });
-    setEditingId(p.id);
-    setDialogOpen(true);
-  };
-
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.nome.trim() || !form.preco) {
       toast({ title: 'Preencha todos os campos', variant: 'destructive' });
       return;
@@ -59,24 +35,23 @@ const Produtos = () => {
       return;
     }
 
-    if (editingId) {
-      setProducts(prev => prev.map(p =>
-        p.id === editingId ? { ...p, nome: form.nome.trim(), preco, disponivel: form.disponivel } : p
-      ));
-      toast({ title: 'Produto atualizado' });
-    } else {
-      setProducts(prev => [...prev, { id: Date.now().toString(), nome: form.nome.trim(), preco, disponivel: form.disponivel }]);
+    try {
+      await addProduct(form.nome.trim(), preco, form.disponivel);
       toast({ title: 'Produto cadastrado' });
+      setDialogOpen(false);
+      setForm(EMPTY_FORM);
+    } catch {
+      toast({ title: 'Erro ao salvar produto', variant: 'destructive' });
     }
-
-    setDialogOpen(false);
-    setForm(EMPTY_FORM);
-    setEditingId(null);
   };
 
-  const handleDelete = (id: string) => {
-    setProducts(prev => prev.filter(p => p.id !== id));
-    toast({ title: 'Produto removido' });
+  const handleDelete = async (id: string) => {
+    try {
+      await removeProduct(id);
+      toast({ title: 'Produto removido' });
+    } catch {
+      toast({ title: 'Erro ao remover produto', variant: 'destructive' });
+    }
   };
 
   return (
@@ -91,14 +66,14 @@ const Produtos = () => {
 
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button onClick={openNew}>
+              <Button onClick={() => { setForm(EMPTY_FORM); setDialogOpen(true); }}>
                 <Plus className="h-4 w-4 sm:mr-2" />
                 <span className="hidden sm:inline">Novo Produto</span>
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>{editingId ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
+                <DialogTitle>Novo Produto</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-2">
                 <div className="space-y-2">
@@ -113,8 +88,8 @@ const Produtos = () => {
                   <Label htmlFor="disponivel">Disponível para venda</Label>
                   <Switch id="disponivel" checked={form.disponivel} onCheckedChange={val => setForm(f => ({ ...f, disponivel: val }))} />
                 </div>
-                <Button onClick={handleSave} className="w-full">
-                  {editingId ? 'Salvar Alterações' : 'Cadastrar Produto'}
+                <Button onClick={handleSave} className="w-full" disabled={isSaving}>
+                  {isSaving ? 'Salvando...' : 'Cadastrar Produto'}
                 </Button>
               </div>
             </DialogContent>
@@ -122,39 +97,44 @@ const Produtos = () => {
         </div>
 
         <div className="kpi-card">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nome</TableHead>
-                <TableHead className="text-right">Preço</TableHead>
-                <TableHead className="text-center">Disponível</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {products.length === 0 ? (
+          {isLoading ? (
+            <div className="space-y-3 p-4">
+              {[1, 2, 3].map(i => <Skeleton key={i} className="h-10 w-full" />)}
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground py-8">Nenhum produto cadastrado</TableCell>
+                  <TableHead>Nome</TableHead>
+                  <TableHead className="text-right">Preço</TableHead>
+                  <TableHead className="text-center">Disponível</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
-              ) : (
-                products.map(p => (
-                  <TableRow key={p.id}>
-                    <TableCell className="font-medium">{p.nome}</TableCell>
-                    <TableCell className="text-right">R$ {p.preco.toFixed(2)}</TableCell>
-                    <TableCell className="text-center">
-                      <span className={`inline-block w-3 h-3 rounded-full ${p.disponivel ? 'bg-[hsl(var(--status-ready))]' : 'bg-[hsl(var(--destructive))]'}`} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(p)}><Pencil className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(p.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                      </div>
-                    </TableCell>
+              </TableHeader>
+              <TableBody>
+                {products.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">Nenhum produto cadastrado</TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : (
+                  products.map(p => (
+                    <TableRow key={p.id}>
+                      <TableCell className="font-medium">{p.nome}</TableCell>
+                      <TableCell className="text-right">R$ {p.preco.toFixed(2)}</TableCell>
+                      <TableCell className="text-center">
+                        <span className={`inline-block w-3 h-3 rounded-full ${p.disponivel ? 'bg-[hsl(var(--status-ready))]' : 'bg-[hsl(var(--destructive))]'}`} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(p.id)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          )}
         </div>
       </main>
     </div>
