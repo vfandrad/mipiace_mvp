@@ -1,25 +1,20 @@
 /**
  * Hook para buscar e atualizar pedidos via API
+ * Usa React Query para cache, refetch automático e mutations
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchOrders, updateOrderStatus, ApiOrder } from '@/lib/api';
 import { Order, OrderStatus, PaymentStatus } from '@/types/order';
 
+// Converte o formato da API (snake_case) para o formato do frontend (camelCase)
 function toOrder(api: ApiOrder): Order {
   return {
     id: api.id,
     orderNumber: api.order_number,
     status: api.status as OrderStatus,
     paymentStatus: api.payment_status as PaymentStatus,
-    items: api.items.map(item => ({
-      id: item.id,
-      name: item.name,
-      quantity: item.quantity,
-      category: item.category,
-      notes: item.notes,
-      price: item.price,
-    })),
+    items: api.items,
     total: api.total,
     customerName: api.customer_name,
     createdAt: new Date(api.created_at),
@@ -34,12 +29,13 @@ export function useOrders() {
     queryKey: ['orders'],
     queryFn: fetchOrders,
     select: (data) => data.map(toOrder),
-    refetchInterval: 15000,
+    refetchInterval: 15000, // Atualiza a cada 15s para ver novos pedidos
   });
 
   const mutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: OrderStatus }) =>
       updateOrderStatus(id, status),
+    // Atualização otimista: muda o status localmente antes da resposta da API
     onMutate: async ({ id, status }) => {
       await queryClient.cancelQueries({ queryKey: ['orders'] });
       const previous = queryClient.getQueryData<ApiOrder[]>(['orders']);
