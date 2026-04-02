@@ -47,31 +47,28 @@ const Admin = () => {
           <KPICard title="Vendas Semana" value={kpis.totalSemana} valuePrefix="R$ " change={12.4} changeLabel="vs semana passada" icon={<Package className="h-5 w-5 text-muted-foreground" />} />
         </div>
 
-        {/* Gráficos */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Gráficos — empilham em mobile, 2 colunas em desktop */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <SalesChart data={mockSalesData} />
           <ProductsChart data={mockProductSales} />
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <HourlyChart data={mockHourlySales} />
           <div className="kpi-card">
-            <h3 className="font-semibold mb-4">Status de Produção</h3>
+            <h3 className="font-semibold mb-4 text-sm sm:text-base">Status de Produção</h3>
             {isLoading ? (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-20 rounded-lg" />)}
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 {([
                   { key: 'novo', label: 'Novos', bg: 'bg-status-new-bg', text: 'text-status-new' },
                   { key: 'producao', label: 'Em Produção', bg: 'bg-status-production-bg', text: 'text-status-production' },
                   { key: 'pronto', label: 'Prontos', bg: 'bg-status-ready-bg', text: 'text-status-ready' },
                   { key: 'entregue', label: 'Entregues', bg: 'bg-status-delivered-bg', text: 'text-status-delivered' },
                 ] as const).map(s => (
-                  <div key={s.key} className={`p-4 rounded-lg ${s.bg}`}>
-                    <p className={`text-3xl font-bold ${s.text}`}>{statusCount[s.key]}</p>
-                    <p className={`text-sm ${s.text}/80 mt-1`}>{s.label}</p>
+                  <div key={s.key} className={`p-3 sm:p-4 rounded-lg ${s.bg}`}>
+                    <p className={`text-2xl sm:text-3xl font-bold ${s.text}`}>{statusCount[s.key]}</p>
+                    <p className={`text-xs sm:text-sm ${s.text}/80 mt-1`}>{s.label}</p>
                   </div>
                 ))}
               </div>
