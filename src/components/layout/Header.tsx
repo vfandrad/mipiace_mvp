@@ -78,9 +78,6 @@ export function Header() {
             );
           })}
         </nav>
-
-        {/* Espaçador para centralizar a nav */}
-        <div className="w-10" />
       </div>
     </header>
   );
