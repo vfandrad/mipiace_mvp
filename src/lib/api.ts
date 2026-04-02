@@ -23,8 +23,8 @@ export interface ApiOrderItem {
   id: string;
   name: string;
   quantity: number;
-  flavors: string[];
-  accompaniments?: string[];
+  category: 'tamanho' | 'sabor' | 'extra';
+  notes?: string;
   price: number;
 }
 
@@ -52,13 +52,38 @@ export function updateOrderStatus(id: string, status: string): Promise<ApiOrder>
 }
 
 // ========================================
-// Produtos (Products)
+// Estatísticas de Pedidos (Dashboard)
 // ========================================
+
+export interface ApiOrderStats {
+  daily_sales: { date: string; total: number; orders: number }[];
+  product_sales: { name: string; sales: number; revenue: number }[];
+  hourly_sales: { hour: string; orders: number; revenue: number }[];
+  kpis: {
+    total_hoje: number;
+    total_semana: number;
+    ticket_medio: number;
+    pedidos_hoje: number;
+    change_percent: number;
+  };
+}
+
+export function fetchOrderStats(): Promise<ApiOrderStats> {
+  return request<ApiOrderStats>('/orders/stats');
+}
+
+// ========================================
+// Produtos / Itens (Products)
+// ========================================
+
+export type ItemCategory = 'tamanho' | 'sabor' | 'extra';
 
 export interface ApiProduct {
   id: string;
   name: string;
   price: number;
+  category: ItemCategory;
+  max_flavors: number;
   is_available: boolean;
 }
 
@@ -66,8 +91,18 @@ export function fetchProducts(): Promise<ApiProduct[]> {
   return request<ApiProduct[]>('/products/');
 }
 
-export function createProduct(data: { name: string; price: number; is_available: boolean }): Promise<ApiProduct> {
+export function createProduct(data: {
+  name: string;
+  price: number;
+  category: ItemCategory;
+  max_flavors?: number;
+  is_available: boolean;
+}): Promise<ApiProduct> {
   return request<ApiProduct>('/products/', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function updateProduct(id: string, data: Partial<ApiProduct>): Promise<ApiProduct> {
+  return request<ApiProduct>(`/items/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
 }
 
 export function deleteProduct(id: string): Promise<void> {

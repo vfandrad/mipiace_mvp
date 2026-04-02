@@ -1,5 +1,6 @@
 /**
  * Card de pedido no Kanban — mostra detalhes e botão para avançar status
+ * Itens de categoria 'tamanho' exibem notes (sabores escolhidos)
  */
 
 import { Order, OrderStatus } from '@/types/order';
@@ -21,7 +22,6 @@ function getMinutesAgo(date: Date): number {
   return Math.floor((Date.now() - date.getTime()) / 60000);
 }
 
-// Fluxo: novo → producao → pronto → entregue
 const NEXT_STATUS: Record<OrderStatus, OrderStatus | null> = {
   novo: 'producao',
   producao: 'pronto',
@@ -29,7 +29,6 @@ const NEXT_STATUS: Record<OrderStatus, OrderStatus | null> = {
   entregue: null,
 };
 
-// Configuração do botão de ação para cada próximo status
 const ACTION_CONFIG: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
   producao: { label: 'Iniciar', icon: <ChefHat className="h-4 w-4" />, className: 'action-btn-warning' },
   pronto: { label: 'Concluir', icon: <Check className="h-4 w-4" />, className: 'action-btn-success' },
@@ -72,11 +71,12 @@ export function OrderCard({ order, onStatusChange }: OrderCardProps) {
             <div className="flex items-start justify-between">
               <div>
                 <span className="font-medium">{item.quantity}x {item.name}</span>
-                {item.flavors.length > 0 && (
-                  <p className="text-muted-foreground text-xs mt-0.5">{item.flavors.join(', ')}</p>
+                {/* Sabores escolhidos vêm no campo notes para itens de tamanho */}
+                {item.category === 'tamanho' && item.notes && (
+                  <p className="text-muted-foreground text-xs mt-0.5">🍨 {item.notes}</p>
                 )}
-                {item.accompaniments && item.accompaniments.length > 0 && (
-                  <p className="text-muted-foreground text-xs">+ {item.accompaniments.join(', ')}</p>
+                {item.category === 'extra' && (
+                  <p className="text-muted-foreground text-xs mt-0.5">+ extra</p>
                 )}
               </div>
               <span className="text-muted-foreground">R$ {(item.price * item.quantity).toFixed(2)}</span>

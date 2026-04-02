@@ -1,6 +1,6 @@
 /**
  * Dashboard (Admin) — KPIs, gráficos e pedidos recentes
- * Dados de pedidos vêm da API; dados de vendas continuam mock (sem endpoint de dashboard na API)
+ * Dados vêm da API via useOrders e useOrderStats
  */
 
 import { Header } from '@/components/layout/Header';
@@ -12,12 +12,14 @@ import { DateFilter } from '@/components/dashboard/DateFilter';
 import { RecentOrders } from '@/components/dashboard/RecentOrders';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useOrders } from '@/hooks/use-orders';
-import { mockSalesData, mockProductSales, mockHourlySales, calculateKPIs } from '@/lib/mock-data';
+import { useOrderStats } from '@/hooks/use-order-stats';
 import { DollarSign, ShoppingCart, TrendingUp, Package } from 'lucide-react';
 
 const Admin = () => {
-  const { orders, isLoading } = useOrders();
-  const kpis = calculateKPIs();
+  const { orders, isLoading: ordersLoading } = useOrders();
+  const { salesData, productSales, hourlySales, kpis, isLoading: statsLoading } = useOrderStats();
+
+  const isLoading = ordersLoading || statsLoading;
 
   // Conta pedidos por status usando dados reais da API
   const statusCount = {
@@ -40,21 +42,35 @@ const Admin = () => {
         </div>
 
         {/* KPIs */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <KPICard title="Vendas Hoje" value={kpis.totalHoje} valuePrefix="R$ " change={kpis.changePercent} changeLabel="vs ontem" icon={<DollarSign className="h-5 w-5 text-muted-foreground" />} />
-          <KPICard title="Pedidos Hoje" value={kpis.pedidosHoje} change={8.5} changeLabel="vs ontem" icon={<ShoppingCart className="h-5 w-5 text-muted-foreground" />} />
-          <KPICard title="Ticket Médio" value={kpis.ticketMedio.toFixed(2)} valuePrefix="R$ " change={3.2} changeLabel="vs semana passada" icon={<TrendingUp className="h-5 w-5 text-muted-foreground" />} />
-          <KPICard title="Vendas Semana" value={kpis.totalSemana} valuePrefix="R$ " change={12.4} changeLabel="vs semana passada" icon={<Package className="h-5 w-5 text-muted-foreground" />} />
-        </div>
+        {statsLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-28 rounded-lg" />)}
+          </div>
+        ) : kpis ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <KPICard title="Vendas Hoje" value={kpis.totalHoje} valuePrefix="R$ " change={kpis.changePercent} changeLabel="vs ontem" icon={<DollarSign className="h-5 w-5 text-muted-foreground" />} />
+            <KPICard title="Pedidos Hoje" value={kpis.pedidosHoje} change={0} changeLabel="vs ontem" icon={<ShoppingCart className="h-5 w-5 text-muted-foreground" />} />
+            <KPICard title="Ticket Médio" value={kpis.ticketMedio.toFixed(2)} valuePrefix="R$ " change={0} changeLabel="vs semana passada" icon={<TrendingUp className="h-5 w-5 text-muted-foreground" />} />
+            <KPICard title="Vendas Semana" value={kpis.totalSemana} valuePrefix="R$ " change={0} changeLabel="vs semana passada" icon={<Package className="h-5 w-5 text-muted-foreground" />} />
+          </div>
+        ) : null}
 
-        {/* Gráficos — empilham em mobile, 2 colunas em desktop */}
+        {/* Gráficos */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <SalesChart data={mockSalesData} />
-          <ProductsChart data={mockProductSales} />
-          <HourlyChart data={mockHourlySales} />
+          {statsLoading ? (
+            <>
+              {[1, 2, 3].map(i => <Skeleton key={i} className="h-64 rounded-lg" />)}
+            </>
+          ) : (
+            <>
+              <SalesChart data={salesData} />
+              <ProductsChart data={productSales} />
+              <HourlyChart data={hourlySales} />
+            </>
+          )}
           <div className="kpi-card">
             <h3 className="font-semibold mb-4 text-sm sm:text-base">Status de Produção</h3>
-            {isLoading ? (
+            {ordersLoading ? (
               <div className="grid grid-cols-2 gap-3">
                 {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-20 rounded-lg" />)}
               </div>
@@ -76,7 +92,7 @@ const Admin = () => {
           </div>
         </div>
 
-        {isLoading ? (
+        {ordersLoading ? (
           <Skeleton className="h-48 rounded-lg" />
         ) : (
           <RecentOrders orders={orders} />
