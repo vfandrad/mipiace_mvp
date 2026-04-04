@@ -9,6 +9,9 @@ class ProductBase(BaseModel):
 class ProductCreate(ProductBase):
     pass
 
+class ProductUpdateAtivarInativar(BaseModel):
+    is_available: bool
+
 class ProductResponse(ProductBase):
     id: str
     created_at: str

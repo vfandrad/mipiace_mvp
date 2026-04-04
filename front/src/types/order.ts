@@ -4,19 +4,24 @@
  */
 
 // Status possíveis de um pedido no fluxo de produção
-export type OrderStatus = 'novo' | 'producao' | 'pronto' | 'entregue';
+export type OrderStatus = "novo" | "producao" | "pronto" | "entregue";
 
 // Status de pagamento do pedido
-export type PaymentStatus = 'pago' | 'pendente';
+export type PaymentStatus = "pago" | "pendente";
+
+// Item individual do produto dentro de um pedido
+export interface OrderItemProduct {
+  name: string;
+  price: number;
+}
 
 // Item individual dentro de um pedido
 export interface OrderItem {
   id: string;
-  name: string;
   quantity: number;
   flavors: string[];
   accompaniments?: string[];
-  price: number;
+  products: OrderItemProduct;
 }
 
 // Pedido completo
@@ -25,8 +30,8 @@ export interface Order {
   orderNumber: number;
   status: OrderStatus;
   paymentStatus: PaymentStatus;
-  items: OrderItem[];
-  total: number;
+  order_items: OrderItem[];
+  total_price: number;
   customerName?: string;
   createdAt: Date;
   updatedAt: Date;
