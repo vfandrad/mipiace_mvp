@@ -62,7 +62,7 @@ export default function Produtos() {
       <main className="container py-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Produtos</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Sabores</h1>
             <p className="text-muted-foreground">
               Gerencie o cardápio da gelateria
             </p>
@@ -70,7 +70,7 @@ export default function Produtos() {
           <Button>
             <Link to={`/produtos?inserir`} className="flex items-center ">
               <Plus className="h-4 w-4 sm:mr-2" />
-              <div className="hidden sm:inline">Novo Produto</div>
+              <div className="hidden sm:inline">Novo Sabor</div>
             </Link>
           </Button>
         </div>
