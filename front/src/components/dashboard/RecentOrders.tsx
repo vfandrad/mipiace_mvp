@@ -3,8 +3,8 @@
  * Exibe uma lista compacta dos últimos pedidos
  */
 
-import { Order } from '@/types/order';
-import { StatusBadge, PaymentBadge } from '@/components/ui/status-badge';
+import { Order } from "@/types/order";
+import { StatusBadge, PaymentBadge } from "@/components/ui/status-badge";
 import {
   Table,
   TableBody,
@@ -12,7 +12,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from "@/components/ui/table";
 
 interface RecentOrdersProps {
   orders: Order[];
@@ -38,20 +38,27 @@ export function RecentOrders({ orders }: RecentOrdersProps) {
           <TableBody>
             {orders.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                <TableCell
+                  colSpan={7}
+                  className="text-center text-muted-foreground py-8"
+                >
                   Nenhum pedido encontrado
                 </TableCell>
               </TableRow>
             ) : (
               orders.map((order) => (
                 <TableRow key={order.id} className="animate-fade-in">
-                  <TableCell className="font-medium">#{order.orderNumber}</TableCell>
-                  <TableCell>{order.customerName || '-'}</TableCell>
+                  <TableCell className="font-medium">
+                    #{order.orderNumber}
+                  </TableCell>
+                  <TableCell>{order.customerName || "-"}</TableCell>
                   <TableCell className="max-w-[200px] truncate">
-                    {order.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}
+                    {order.order_items
+                      .map((i) => `${i.quantity}x ${i.products.name}`)
+                      .join(", ")}
                   </TableCell>
                   <TableCell className="text-right font-medium">
-                    R$ {order.total.toFixed(2)}
+                    R$ {order.total_price.toFixed(2)}
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={order.status} />
@@ -60,7 +67,10 @@ export function RecentOrders({ orders }: RecentOrdersProps) {
                     <PaymentBadge status={order.paymentStatus} />
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {order.createdAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    {order.createdAt.toLocaleTimeString("pt-BR", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </TableCell>
                 </TableRow>
               ))

@@ -9,7 +9,7 @@ const BASE_URL = 'https://api.vfandrade.com';
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    headers: { "Content-Type": "application/json", ...options?.headers },
   });
   if (!res.ok) throw new Error(`Erro ${res.status}: ${res.statusText}`);
   return res.json();
@@ -19,13 +19,17 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 // Pedidos (Orders)
 // ========================================
 
+export interface ApiOrderItemProduct {
+  name: string;
+  price: number;
+}
+
 export interface ApiOrderItem {
   id: string;
-  name: string;
   quantity: number;
   flavors: string[];
   accompaniments?: string[];
-  price: number;
+  products: ApiOrderItemProduct;
 }
 
 export interface ApiOrder {
@@ -33,20 +37,23 @@ export interface ApiOrder {
   order_number: number;
   status: string;
   payment_status: string;
-  items: ApiOrderItem[];
-  total: number;
+  order_items: ApiOrderItem[];
+  total_price: number;
   customer_name?: string;
   created_at: string;
   updated_at: string;
 }
 
 export function fetchOrders(): Promise<ApiOrder[]> {
-  return request<ApiOrder[]>('/orders/');
+  return request<ApiOrder[]>("/orders/");
 }
 
-export function updateOrderStatus(id: string, status: string): Promise<ApiOrder> {
+export function updateOrderStatus(
+  id: string,
+  status: string,
+): Promise<ApiOrder> {
   return request<ApiOrder>(`/orders/${id}`, {
-    method: 'PATCH',
+    method: "PATCH",
     body: JSON.stringify({ status }),
   });
 }
@@ -62,14 +69,55 @@ export interface ApiProduct {
   is_available: boolean;
 }
 
-export function fetchProducts(): Promise<ApiProduct[]> {
-  return request<ApiProduct[]>('/products/');
+export interface ApiProductAtivarInativar {
+  is_available: boolean;
 }
 
-export function createProduct(data: { name: string; price: number; is_available: boolean }): Promise<ApiProduct> {
-  return request<ApiProduct>('/products/', { method: 'POST', body: JSON.stringify(data) });
+export function fetchProducts(): Promise<ApiProduct[]> {
+  return request<ApiProduct[]>("/products/");
+}
+
+export function fetchProduct(id: string): Promise<ApiProduct> {
+  return request<ApiProduct>(`/products/${id}`);
+}
+
+export function createProduct(data: {
+  name: string;
+  price: number;
+  is_available: boolean;
+}): Promise<ApiProduct> {
+  return request<ApiProduct>("/products/", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateProduct(
+  id: string,
+  data: {
+    name: string;
+    price: number;
+    is_available: boolean;
+  },
+): Promise<ApiProduct> {
+  return request<ApiProduct>(`/products/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
 
 export function deleteProduct(id: string): Promise<void> {
-  return request<void>(`/products/${id}`, { method: 'DELETE' });
+  return request<void>(`/products/${id}`, { method: "DELETE" });
+}
+
+export function ativarInativarProduct(
+  id: string,
+  data: {
+    is_available: boolean;
+  },
+): Promise<ApiProductAtivarInativar> {
+  return request<ApiProductAtivarInativar>(`/products/${id}/ativar-inativar`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
