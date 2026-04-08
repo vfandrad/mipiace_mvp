@@ -53,7 +53,7 @@ export function PaymentBadge({ status, className }: PaymentBadgeProps) {
         className
       )}
     >
-      {isPaid ? 'Pago' : 'Pendente'}
+      {isPaid ? 'Pago' : 'Pagar na entrega'}
     </span>
   );
 }

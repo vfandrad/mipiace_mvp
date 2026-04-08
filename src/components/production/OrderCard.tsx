@@ -79,7 +79,7 @@ export function OrderCard({ order, onStatusChange }: OrderCardProps) {
                   <p className="text-muted-foreground text-xs">+ {item.accompaniments.join(', ')}</p>
                 )}
               </div>
-              <span className="text-muted-foreground">R$ {(item.price * item.quantity).toFixed(2)}</span>
+              <span className="text-muted-foreground">R$ {((item.price ?? 0) * (item.quantity ?? 0)).toFixed(2)}</span>
             </div>
           </div>
         ))}
@@ -88,7 +88,7 @@ export function OrderCard({ order, onStatusChange }: OrderCardProps) {
       {/* Total */}
       <div className="flex items-center justify-between py-3 border-t border-border">
         <span className="font-medium">Total</span>
-        <span className="text-lg font-semibold">R$ {order.total.toFixed(2)}</span>
+        <span className="text-lg font-semibold">R$ {(order.total ?? 0).toFixed(2)}</span>
       </div>
 
       {/* Botão de ação */}
