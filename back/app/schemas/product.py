@@ -1,14 +1,12 @@
 from pydantic import BaseModel
 from typing import Optional
 
-class ProductBase(BaseModel):
+class CategoryCreate(BaseModel):
     name: str
-    price: float
+    requires_price: bool = True
+
+class ProductCreate(BaseModel):
+    name: str
+    category_id: str
+    price: Optional[float] = None
     is_available: bool = True
-
-class ProductCreate(ProductBase):
-    pass
-
-class ProductResponse(ProductBase):
-    id: str
-    created_at: str
