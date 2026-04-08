@@ -67,7 +67,7 @@ export function OrderCard({ order, onStatusChange }: OrderCardProps) {
 
       {/* Itens */}
       <div className="space-y-2 mb-4">
-        {order.items.map(item => (
+        {(order.items ?? []).map(item => (
           <div key={item.id} className="text-sm">
             <div className="flex items-start justify-between">
               <div>

@@ -48,7 +48,7 @@ export function RecentOrders({ orders }: RecentOrdersProps) {
                   <TableCell className="font-medium">#{order.orderNumber}</TableCell>
                   <TableCell>{order.customerName || '-'}</TableCell>
                   <TableCell className="max-w-[200px] truncate">
-                    {order.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}
+                    {(order.items ?? []).map(i => `${i.quantity}x ${i.name}`).join(', ')}
                   </TableCell>
                   <TableCell className="text-right font-medium">
                     R$ {order.total.toFixed(2)}
