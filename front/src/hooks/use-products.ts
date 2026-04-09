@@ -13,7 +13,6 @@ import {
   updateProduct,
   fetchProduct,
 } from "@/lib/api";
-import { toast } from "sonner";
 
 export interface Product {
   id: string;
@@ -22,28 +21,21 @@ export interface Product {
   disponivel: boolean;
 }
 
-// Converte API (inglês) → frontend (português)
-function toProduct(api: ApiProduct): Product {
-  return {
-    id: api.id,
-    nome: api.name,
-    preco: api.price,
-    disponivel: api.is_available,
-  };
-}
-
 export function useProducts() {
   const queryClient = useQueryClient();
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ["products"] });
 
-  const query = useQuery({
-    queryKey: ["products"],
-    queryFn: fetchProducts,
-    select: (data) => data.map(toProduct),
-  });
+  function refetch() {
+    queryClient.refetchQueries({ queryKey: ["products"], type: "all" });
+  }
 
-  function useProductDetail(id: string) {
+  function ProductsQuery() {
+    return useQuery({
+      queryKey: ["products"],
+      queryFn: fetchProducts,
+    });
+  }
+
+  function ProductDetailQuery(id: string) {
     return useQuery({
       queryKey: ["product-detail", id],
       queryFn: () => fetchProduct(id),
@@ -51,71 +43,68 @@ export function useProducts() {
     });
   }
 
-  const addMutation = useMutation({
-    mutationFn: (data: {
-      name: string;
-      price: number;
-      is_available: boolean;
-    }) => createProduct(data),
-    onSuccess: invalidate,
-  });
+  function AddProductMutation() {
+    return useMutation<
+      ApiProduct,
+      void,
+      {
+        nome: string;
+        preco: number;
+        disponivel: boolean;
+      }
+    >({
+      mutationFn: (data) =>
+        createProduct({
+          name: data.nome,
+          price: data.preco,
+          is_available: data.disponivel,
+        }),
+      onSuccess: refetch,
+    });
+  }
 
-  const updateMutation = useMutation({
-    mutationFn: (data: {
-      id: string;
-      data: {
-        name: string;
-        price: number;
+  function UpdateProductMutation() {
+    return useMutation<void, void, Product>({
+      mutationFn: (data) =>
+        updateProduct(data.id, {
+          name: data.nome,
+          price: data.preco,
+          is_available: data.disponivel,
+        }),
+      onSuccess: refetch,
+    });
+  }
+
+  function RemoveProductMutation() {
+    return useMutation({
+      mutationFn: (id: string) => deleteProduct(id),
+      onSuccess: refetch,
+    });
+  }
+
+  function AtivarInativarMutation() {
+    return useMutation<
+      void,
+      void,
+      {
+        id: string;
         is_available: boolean;
-      };
-    }) => updateProduct(data.id, data.data),
-    onSuccess: invalidate,
-  });
-
-  const removeMutation = useMutation({
-    mutationFn: (id: string) => deleteProduct(id),
-    onSuccess: invalidate,
-  });
-
-  const ativarInativarMutation = useMutation({
-    mutationFn: ({ id, is_available }: { id: string; is_available: boolean }) =>
-      ativarInativarProduct(id, { is_available }),
-    onSuccess: invalidate,
-  });
+      }
+    >({
+      mutationFn: (data) => {
+        return ativarInativarProduct(data.id, data.is_available);
+      },
+      onSuccess: refetch,
+    });
+  }
 
   return {
-    products: query.data ?? [],
-    useProductDetail,
-    isLoading: query.isLoading,
-    refetch: query.refetch,
-    error: query.error,
-    addProduct: (nome: string, preco: number, disponivel: boolean) =>
-      addMutation.mutateAsync({
-        name: nome,
-        price: preco,
-        is_available: disponivel,
-      }),
-    updateProduct: (
-      id: string,
-      nome: string,
-      preco: number,
-      disponivel: boolean,
-    ) =>
-      updateMutation.mutateAsync({
-        id,
-        data: {
-          name: nome,
-          price: preco,
-          is_available: disponivel,
-        },
-      }),
-    removeProduct: (id: string) => removeMutation.mutateAsync(id),
-    ativarInativarProduct: (id: string, is_available: boolean) =>
-      ativarInativarMutation.mutateAsync({ id, is_available }),
-    isSaving:
-      addMutation.isPending ||
-      updateMutation.isPending ||
-      removeMutation.isPending ||
-      ativarInativarMutation.isPending,
+    ProductsQuery,
+    ProductDetailQuery,
+    refetch,
+    AddProductMutation,
+    UpdateProductMutation,
+    RemoveProductMutation,
+    AtivarInativarMutation,
   };
 }

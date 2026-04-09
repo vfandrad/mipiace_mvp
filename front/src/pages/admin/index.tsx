@@ -18,7 +18,13 @@ import {
   mockHourlySales,
   calculateKPIs,
 } from "@/lib/mock-data";
-import { DollarSign, ShoppingCart, TrendingUp, Package } from "lucide-react";
+import {
+  DollarSign,
+  ShoppingCart,
+  TrendingUp,
+  Package,
+  PackageIcon,
+} from "lucide-react";
 
 export default function Admin() {
   const { orders, isLoading } = useOrders();
@@ -54,14 +60,14 @@ export default function Admin() {
             valuePrefix="R$ "
             change={kpis.changePercent}
             changeLabel="vs ontem"
-            icon={<DollarSign className="h-5 w-5 text-muted-foreground" />}
+            icon={DollarSign}
           />
           <KPICard
             title="Pedidos Hoje"
             value={kpis.pedidosHoje}
             change={8.5}
             changeLabel="vs ontem"
-            icon={<ShoppingCart className="h-5 w-5 text-muted-foreground" />}
+            icon={ShoppingCart}
           />
           <KPICard
             title="Ticket Médio"
@@ -69,7 +75,7 @@ export default function Admin() {
             valuePrefix="R$ "
             change={3.2}
             changeLabel="vs semana passada"
-            icon={<TrendingUp className="h-5 w-5 text-muted-foreground" />}
+            icon={TrendingUp}
           />
           <KPICard
             title="Vendas Semana"
@@ -77,7 +83,7 @@ export default function Admin() {
             valuePrefix="R$ "
             change={12.4}
             changeLabel="vs semana passada"
-            icon={<Package className="h-5 w-5 text-muted-foreground" />}
+            icon={PackageIcon}
           />
         </div>
 

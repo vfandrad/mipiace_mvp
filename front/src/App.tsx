@@ -7,18 +7,18 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import Admin from "./pages/Admin";
-import Loja from "./pages/Loja";
-import Produtos from "./pages/Produtos";
-import NotFound from "./pages/NotFound";
+import Loja from "./pages/loja";
+import Produtos from "./pages/produtos";
+import NotFound from "./pages/not-found";
+import Admin from "./pages/admin";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
+    <TooltipProvider delayDuration={0}>
       <Toaster />
-      <Sonner />
+      <Sonner position="top-center" richColors />
       <BrowserRouter>
         <Routes>
           {/* Redireciona "/" para "/loja" */}

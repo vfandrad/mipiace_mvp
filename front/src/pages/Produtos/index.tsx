@@ -16,50 +16,55 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PencilIcon, Plus, Trash2Icon } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 import { useProducts } from "@/hooks/use-products";
-import ProdutosAlterarWindow from "./components/produtos-alterar-window";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import ProdutosInserirWindow from "./components/produtos-inserir-window";
+import ProdutosAlterarWindow from "./components/produtos-alterar-window";
+import { toast } from "sonner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export default function Produtos() {
-  const { products, isLoading, removeProduct, ativarInativarProduct, refetch } =
-    useProducts();
-  const { toast } = useToast();
+  const {
+    ProductsQuery,
+    RemoveProductMutation,
+    AtivarInativarMutation,
+    refetch,
+  } = useProducts();
+  const { data, isLoading } = ProductsQuery();
+  const { mutateAsync: mutateAtivarInativar } = AtivarInativarMutation();
+  const { mutateAsync: mutateRemoveProduct } = RemoveProductMutation();
+  const navigate = useNavigate();
 
   const handleDelete = async (id: string) => {
     try {
-      await removeProduct(id);
-      toast({ title: "Produto removido" });
+      await mutateRemoveProduct(id);
+      toast.success("Produto removido");
+      refetch();
     } catch (error) {
-      toast({
-        title: "Existe pedidos associados a este produto",
-        variant: "destructive",
-      });
+      toast.error("Existe pedidos associados a este produto");
     }
   };
 
   const handleAtivatInativar = async (id: string, val: boolean) => {
     try {
-      await ativarInativarProduct(id, val);
-      toast({
-        title: val ? "Produto ativado" : "Produto inativado",
-      });
+      await mutateAtivarInativar({ id, is_available: val });
+      toast.success(val ? "Produto ativado" : "Produto inativado");
       refetch();
     } catch {
-      toast({
-        title: "Erro ao alterar disponibilidade",
-        variant: "destructive",
-      });
+      toast.error("Erro ao alterar disponibilidade");
     }
   };
 
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <ProdutosInserirWindow />
-      <ProdutosAlterarWindow />
       <main className="container py-6 space-y-6">
+        <ProdutosInserirWindow />
+        <ProdutosAlterarWindow />
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Produtos</h1>
@@ -67,11 +72,9 @@ export default function Produtos() {
               Gerencie o cardápio da gelateria
             </p>
           </div>
-          <Button>
-            <Link to={`/produtos?inserir`} className="flex items-center ">
-              <Plus className="h-4 w-4 sm:mr-2" />
-              <div className="hidden sm:inline">Novo Produto</div>
-            </Link>
+          <Button onClick={() => navigate("/produtos?inserir")}>
+            <Plus className="h-4 w-4 " />
+            <span className="hidden sm:inline">Novo Produto</span>
           </Button>
         </div>
         <div className="kpi-card">
@@ -92,7 +95,7 @@ export default function Produtos() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {products.length === 0 ? (
+                {!data ? (
                   <TableRow>
                     <TableCell
                       colSpan={4}
@@ -102,38 +105,54 @@ export default function Produtos() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  products.map((p) => (
+                  data.map((p) => (
                     <TableRow key={p.id}>
-                      <TableCell className="font-medium">{p.nome}</TableCell>
+                      <TableCell className="font-medium">{p.name}</TableCell>
                       <TableCell className="text-right">
-                        R$ {p.preco.toFixed(2)}
+                        R$ {p.price.toFixed(2)}
                       </TableCell>
-                      <TableCell className="flex items-center justify-center text-center gap-3">
-                        <div
-                          className={`inline-block w-3 h-3 rounded-full ${p.disponivel ? "bg-[hsl(var(--status-ready))]" : "bg-[hsl(var(--destructive))]"}`}
-                        />
-                        <Switch
-                          id="disponivel"
-                          defaultChecked={p.disponivel}
-                          checked={p.disponivel}
-                          onCheckedChange={(val) =>
-                            handleAtivatInativar(p.id, val)
-                          }
-                        />
+                      <TableCell>
+                        <div className="flex items-center justify-center text-center gap-3">
+                          <div
+                            className={`inline-block w-3 h-3 rounded-full ${p.is_available ? "bg-[hsl(var(--status-ready))]" : "bg-[hsl(var(--destructive))]"}`}
+                          />
+                          <Switch
+                            id="disponivel"
+                            defaultChecked={p.is_available}
+                            checked={p.is_available}
+                            onCheckedChange={(val) =>
+                              handleAtivatInativar(p.id, val)
+                            }
+                          />
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="icon">
-                          <Link to={`/produtos?alterar=${p.id}`}>
-                            <PencilIcon className="h-4 w-4 text-blue-500" />
-                          </Link>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(p.id)}
-                        >
-                          <Trash2Icon className="h-4 w-4 text-destructive" />
-                        </Button>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() =>
+                                navigate(`/produtos?alterar=${p.id}`)
+                              }
+                            >
+                              <PencilIcon className="h-4 w-4 text-blue-500" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Alterar</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDelete(p.id)}
+                            >
+                              <Trash2Icon className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Deletar</TooltipContent>
+                        </Tooltip>
                       </TableCell>
                     </TableRow>
                   ))

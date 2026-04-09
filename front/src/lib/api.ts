@@ -99,8 +99,8 @@ export function updateProduct(
     price: number;
     is_available: boolean;
   },
-): Promise<ApiProduct> {
-  return request<ApiProduct>(`/products/${id}`, {
+): Promise<void> {
+  return request<void>(`/products/${id}`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
@@ -112,12 +112,10 @@ export function deleteProduct(id: string): Promise<void> {
 
 export function ativarInativarProduct(
   id: string,
-  data: {
-    is_available: boolean;
-  },
-): Promise<ApiProductAtivarInativar> {
-  return request<ApiProductAtivarInativar>(`/products/${id}/ativar-inativar`, {
+  is_available: boolean,
+): Promise<void> {
+  return request<void>(`/products/${id}/ativar-inativar`, {
     method: "PATCH",
-    body: JSON.stringify(data),
+    body: JSON.stringify({ is_available }),
   });
 }

@@ -1,4 +1,12 @@
 import { Button } from "@/components/ui/button";
+import {
+  CheckboxField,
+  NumberField,
+  SwitchField,
+  TextAreaField,
+  TextField,
+} from "@/components/ui/form/fields";
+import { RootForm } from "@/components/ui/form/RootForm";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -6,107 +14,83 @@ import { useProducts } from "@/hooks/use-products";
 import { useToast } from "@/hooks/use-toast";
 import { useWindow } from "@/hooks/use-window";
 import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
-
-const EMPTY_FORM = { nome: "", preco: "", disponivel: true };
+import { toast } from "sonner";
 
 export default function ProdutosForm() {
   const { paramValue } = useWindow("alterar");
-  const { toast } = useToast();
-  const { addProduct, updateProduct, useProductDetail, isSaving } =
-    useProducts();
-  const [form, setForm] = useState(EMPTY_FORM);
-  const { data } = useProductDetail(paramValue);
+  const {
+    AddProductMutation,
+    UpdateProductMutation,
+    refetch,
+    ProductDetailQuery,
+  } = useProducts();
+  const { data } = ProductDetailQuery(paramValue);
+  const { mutateAsync: updateProductMutate, isPending: isPendingUpdate } =
+    UpdateProductMutation();
+  const { mutateAsync: addProductMutate, isPending: isPendingAdd } =
+    AddProductMutation();
   const navigate = useNavigate();
+  const form = useForm();
 
   const handleSave = async () => {
-    if (!form.nome.trim() || !form.preco) {
-      toast({ title: "Preencha todos os campos", variant: "destructive" });
-      return;
-    }
-    const preco = parseFloat(form.preco);
-    if (isNaN(preco) || preco <= 0) {
-      toast({ title: "Preço inválido", variant: "destructive" });
-      return;
-    }
-
     try {
       if (paramValue) {
-        await updateProduct(
-          paramValue,
-          form.nome.trim(),
-          preco,
-          form.disponivel,
-        );
-        toast({ title: "Produto atualizado" });
+        await updateProductMutate({
+          id: paramValue,
+          nome: form.getValues("name").trim(),
+          preco: form.getValues("price"),
+          disponivel: form.getValues("is_available"),
+        });
+        toast.success("Produto atualizado");
       } else {
-        await addProduct(form.nome.trim(), preco, form.disponivel);
-        toast({ title: "Produto cadastrado" });
+        await addProductMutate({
+          nome: form.getValues("name").trim(),
+          preco: form.getValues("price"),
+          disponivel: form.getValues("is_available"),
+        });
+        toast.success("Produto cadastrado");
       }
+      refetch();
       navigate("/produtos");
-      setForm(EMPTY_FORM);
+      form.reset();
     } catch {
-      toast({ title: "Erro ao salvar produto", variant: "destructive" });
+      toast.error("Erro ao salvar produto");
     }
   };
 
   useEffect(() => {
     if (!data) return;
-    setForm({
-      nome: data?.name,
-      preco: String(data?.price),
-      disponivel: data?.is_available,
-    });
-  }, [data]);
+    form.reset(data);
+  }, [data, form]);
 
   return (
-    <div className="space-y-4 pt-2">
-      <div className="space-y-2">
-        <Label htmlFor="nome">Nome</Label>
-        <Input
-          id="nome"
-          value={form.nome}
-          onChange={(e) =>
-            setForm((f) => ({
-              ...f,
-              nome: e.target.value,
-            }))
-          }
-          placeholder="Ex: Gelato Pistache"
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="preco">Preço (R$)</Label>
-        <Input
-          id="preco"
-          type="number"
-          step="0.01"
-          min="0"
-          value={form.preco}
-          onChange={(e) =>
-            setForm((f) => ({
-              ...f,
-              preco: e.target.value,
-            }))
-          }
-          placeholder="0.00"
-        />
-      </div>
-      <div className="flex items-center justify-between">
-        <Label htmlFor="disponivel">Disponível para venda</Label>
-        <Switch
-          id="disponivel"
-          checked={form.disponivel}
-          onCheckedChange={(val) => setForm((f) => ({ ...f, disponivel: val }))}
-        />
-      </div>
-      <Button onClick={handleSave} className="w-full" disabled={isSaving}>
-        {isSaving
+    <RootForm {...form} onSubmit={handleSave} className="space-y-2">
+      <TextField
+        name="name"
+        label="Nome"
+        placeholder="Ex: Gelato Pistache"
+        required
+      />
+      <NumberField
+        name="price"
+        label="Preço (R$)"
+        placeholder="0.00"
+        required
+      />
+      <SwitchField
+        name="is_available"
+        label="Disponível para venda?"
+        defaultChecked={true}
+      />
+      <Button className="w-full" disabled={isPendingAdd || isPendingUpdate}>
+        {isPendingAdd || isPendingUpdate
           ? "Salvando..."
           : paramValue
             ? "Atualizar Produto"
             : "Cadastrar Produto"}
       </Button>
-    </div>
+    </RootForm>
   );
 }
