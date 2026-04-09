@@ -12,7 +12,10 @@ export function useOrders() {
 
   const query = useQuery({
     queryKey: ['orders'],
-    queryFn: fetchOrders,
+    queryFn: async () => {
+      const res = await fetchOrders();
+      return Array.isArray(res) ? res : [];
+    },
     refetchInterval: 15000,
   });
 

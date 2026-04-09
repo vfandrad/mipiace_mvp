@@ -13,7 +13,10 @@ export function useProducts() {
 
   const query = useQuery({
     queryKey: ['products'],
-    queryFn: fetchProducts,
+    queryFn: async () => {
+      const res = await fetchProducts();
+      return Array.isArray(res) ? res : [];
+    },
   });
 
   const addMutation = useMutation({
