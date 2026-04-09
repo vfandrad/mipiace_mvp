@@ -1,42 +1,65 @@
 /**
- * Tipos relacionados a pedidos da gelateria
- * Esses tipos são usados em todo o sistema para tipagem de dados
+ * Tipos do sistema — pedidos e produtos
+ * Reflete a estrutura exata da API FastAPI
  */
 
-// Status possíveis de um pedido no fluxo de produção
-export type OrderStatus = 'novo' | 'producao' | 'pronto' | 'entregue';
+// ========================================
+// Pedidos (Orders)
+// ========================================
 
-// Status de pagamento do pedido
+export type OrderStatus = 'novo' | 'preparando' | 'entrega' | 'finalizado';
 export type PaymentStatus = 'pago' | 'pendente';
 
-// Item individual dentro de um pedido
-export interface OrderItem {
-  id: string;
-  name: string;
-  quantity: number;
-  flavors: string[];
-  accompaniments?: string[];
-  price: number;
+export interface OrderItemDetalhado {
+  produto: string;
+  quantidade: number;
+  escolhas: string[];
+  observacoes?: string;
 }
 
-// Pedido completo
 export interface Order {
   id: string;
-  orderNumber: number;
+  customer_name: string;
+  customer_phone: string;
+  total_price: number;
+  rua: string;
+  numero: string;
+  bairro: string;
   status: OrderStatus;
-  paymentStatus: PaymentStatus;
-  items: OrderItem[];
-  total: number;
-  customerName?: string;
-  createdAt: Date;
-  updatedAt: Date;
+  payment_status?: PaymentStatus;
+  itens_detalhados: OrderItemDetalhado[];
+  created_at?: string;
 }
 
 // ========================================
-// Tipos para Dashboard e Gráficos
+// Produtos (Products) — Árvore hierárquica
 // ========================================
 
-// Dados para cards de KPI (indicadores chave)
+export interface Complement {
+  id: string;
+  name: string;
+  extra_price: number;
+  is_available: boolean;
+}
+
+export interface ComplementGroup {
+  id: string;
+  name: string;
+  complements: Complement[];
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  price: number;
+  is_available: boolean;
+  complement_groups?: ComplementGroup[];
+}
+
+// ========================================
+// Dashboard (mantido para compatibilidade)
+// ========================================
+
 export interface KPIData {
   title: string;
   value: string | number;
@@ -44,21 +67,18 @@ export interface KPIData {
   changeLabel?: string;
 }
 
-// Dados de vendas diárias (para gráfico de linha)
 export interface SalesData {
   date: string;
   total: number;
   orders: number;
 }
 
-// Dados de vendas por produto (para gráfico de barras)
 export interface ProductSalesData {
   name: string;
   sales: number;
   revenue: number;
 }
 
-// Dados de vendas por horário (para gráfico de área)
 export interface HourlySalesData {
   hour: string;
   orders: number;

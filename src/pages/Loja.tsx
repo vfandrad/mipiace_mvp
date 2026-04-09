@@ -1,5 +1,5 @@
 /**
- * Página de Produção — quadro Kanban para gerenciar pedidos
+ * Página de Produção — quadro Kanban
  */
 
 import { Header } from '@/components/layout/Header';
@@ -11,12 +11,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
   novo: 'Novo',
-  producao: 'Em Produção',
-  pronto: 'Pronto',
-  entregue: 'Entregue',
+  preparando: 'Preparando',
+  entrega: 'Entrega',
+  finalizado: 'Finalizado',
 };
 
-const KANBAN_STATUSES: OrderStatus[] = ['novo', 'producao', 'pronto', 'entregue'];
+const KANBAN_STATUSES: OrderStatus[] = ['novo', 'preparando', 'entrega', 'finalizado'];
 
 const Loja = () => {
   const { orders, isLoading, changeStatus } = useOrders();
