@@ -1,11 +1,12 @@
 /**
- * Serviço de comunicação com a API backend (api.vfandrade.com)
- * Centraliza todas as chamadas HTTP do projeto
+ * Serviço centralizado de comunicação com a API FastAPI
+ * Todas as chamadas HTTP do projeto passam por aqui
  */
+
+import { Order, OrderStatus, Product } from '@/types/order';
 
 const BASE_URL = 'https://api.vfandrade.com';
 
-// Helper genérico para fetch com tratamento de erro
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
@@ -19,57 +20,34 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 // Pedidos (Orders)
 // ========================================
 
-export interface ApiOrderItem {
-  id: string;
-  name: string;
-  quantity: number;
-  flavors: string[];
-  accompaniments?: string[];
-  price: number;
+/** GET /orders — retorna pedidos com itens detalhados e endereço */
+export function fetchOrders(): Promise<Order[]> {
+  return request<Order[]>('/orders/');
 }
 
-export interface ApiOrder {
-  id: string;
-  order_number: number;
-  status: string;
-  payment_status: string;
-  items: ApiOrderItem[];
-  total: number;
-  customer_name?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export function fetchOrders(): Promise<ApiOrder[]> {
-  return request<ApiOrder[]>('/orders/');
-}
-
-export function updateOrderStatus(id: string, status: string): Promise<ApiOrder> {
-  return request<ApiOrder>(`/orders/${id}`, {
+/** PATCH /orders/{id} — atualiza status do pedido */
+export function updateOrderStatus(id: string, status: OrderStatus): Promise<Order> {
+  return request<Order>(`/orders/${id}`, {
     method: 'PATCH',
     body: JSON.stringify({ status }),
   });
 }
 
 // ========================================
-// Produtos (Products)
+// Produtos (Products) — árvore completa
 // ========================================
 
-export interface ApiProduct {
-  id: string;
-  name: string;
-  price: number;
-  is_available: boolean;
+/** GET /products — retorna inventário completo (Produtos > Grupos > Complementos) */
+export function fetchProducts(): Promise<Product[]> {
+  return request<Product[]>('/products/');
 }
 
-export function fetchProducts(): Promise<ApiProduct[]> {
-  return request<ApiProduct[]>('/products/');
+/** POST /products — cria novo produto */
+export function createProduct(data: { name: string; price: number; is_available: boolean }): Promise<Product> {
+  return request<Product>('/products/', { method: 'POST', body: JSON.stringify(data) });
 }
 
-export function createProduct(data: { name: string; price: number; is_available: boolean }): Promise<ApiProduct> {
-  return request<ApiProduct>('/products/', { method: 'POST', body: JSON.stringify(data) });
-}
-
+/** DELETE /products/{id} — remove produto */
 export function deleteProduct(id: string): Promise<void> {
   return request<void>(`/products/${id}`, { method: 'DELETE' });
 }
