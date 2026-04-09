@@ -3,7 +3,7 @@
  * Centraliza todas as chamadas HTTP do projeto
  */
 
-const BASE_URL = "http://127.0.0.1:8000";
+const BASE_URL = 'https://api.vfandrade.com';
 
 // Helper genérico para fetch com tratamento de erro
 async function request<T>(path: string, options?: RequestInit): Promise<T> {

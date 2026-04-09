@@ -67,7 +67,7 @@ export default function Produtos() {
         <ProdutosAlterarWindow />
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Produtos</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Sabores</h1>
             <p className="text-muted-foreground">
               Gerencie o cardápio da gelateria
             </p>
