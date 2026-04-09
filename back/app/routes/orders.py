@@ -1,29 +1,59 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from typing import List
 from app.database import get_db
-from app.schemas.order import OrderUpdateStatus
-from app.services.order_service import process_n8n_order
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
-@router.get("/")
-async def get_orders(db=Depends(get_db)):
-    # Retorna o pedido, os itens e o nome/preço do produto vinculado (para o Kanban)
-    res = db.table("orders").select("*, order_items(*, products(name, price))").order("created_at").execute()
-    return res.data
+# --- SCHEMAS AGNOSTICOS ---
+class OrderItemSchema(BaseModel):
+    product_id: str
+    selected_complement_ids: List[str] = [] # Lista de IDs de qualquer complemento
+    quantity: int = 1
 
-@router.patch("/{id}")
-async def update_order(id: str, payload: OrderUpdateStatus, db=Depends(get_db)):
-    update_data = payload.dict(exclude_unset=True)
-    res = db.table("orders").update(update_data).eq("id", id).execute()
-    return res.data[0]
+class OrderCreateSchema(BaseModel):
+    customer_name: str
+    customer_phone: str
+    total_price: float # Calculado pelo n8n com base nos IDs
+    items: List[OrderItemSchema]
 
+# --- WEBHOOK DO N8N ---
 @router.post("/webhook/n8n")
-async def receive_n8n_order(payload: dict, db=Depends(get_db)):
+async def receive_order(payload: OrderCreateSchema, db=Depends(get_db)):
     """
-    Recebe o JSON do n8n com a intenção validada de compra do cliente.
+    Salva o pedido de forma escalável. 
+    Armazena a relação IDs de produtos e complementos.
     """
     try:
-        new_order = process_n8n_order(payload, db)
-        return {"status": "success", "order": new_order}
+        # 1. Cria o registro do Pedido (Order)
+        order_res = db.table("orders").insert({
+            "customer_name": payload.customer_name,
+            "customer_phone": payload.customer_phone,
+            "total_price": payload.total_price,
+            "status": "novo"
+        }).execute()
+        order_id = order_res.data[0]['id']
+
+        # 2. Cria os itens do pedido (Order Items)
+        for item in payload.items:
+            # Aqui você salva o item principal e os complementos escolhidos
+            # Dica: Você pode salvar os IDs dos complementos como um JSONB no Supabase
+            db.table("order_items").insert({
+                "order_id": order_id,
+                "product_id": item.product_id,
+                "complement_ids": item.selected_complement_ids, # Campo JSONB no banco
+                "quantity": item.quantity
+            }).execute()
+
+        return {"status": "success", "order_id": order_id}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+# --- KANBAN (PARA O LOVABLE) ---
+@router.get("/")
+async def get_orders_for_kanban(db=Depends(get_db)):
+    """
+    Busca pedidos com JOINs para mostrar nomes legíveis no Dashboard.
+    """
+    res = db.table("orders").select("*, order_items(*, products(name))").order("created_at", desc=True).execute()
+    return res.data
