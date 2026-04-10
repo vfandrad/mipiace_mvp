@@ -1,111 +1,99 @@
 /**
- * Card de pedido no Kanban — layout compacto com dados da API FastAPI
+ * Card de pedido no Kanban — mostra detalhes e botão para avançar status
  */
 
 import { Order, OrderStatus } from '@/types/order';
 import { PaymentBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { Clock, ChefHat, Check, Truck, MapPin, AlertCircle } from 'lucide-react';
+import { Clock, ChefHat, Check, Truck } from 'lucide-react';
 
 interface OrderCardProps {
   order: Order;
   onStatusChange: (orderId: string, newStatus: OrderStatus) => void;
 }
 
-function formatTime(dateStr?: string): string {
-  if (!dateStr) return '--:--';
-  return new Date(dateStr).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+function formatTime(date: Date): string {
+  return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
-function getMinutesAgo(dateStr?: string): number {
-  if (!dateStr) return 0;
-  return Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000);
+function getMinutesAgo(date: Date): number {
+  return Math.floor((Date.now() - date.getTime()) / 60000);
 }
 
+// Fluxo: novo → producao → pronto → entregue
 const NEXT_STATUS: Record<OrderStatus, OrderStatus | null> = {
-  novo: 'preparando',
-  preparando: 'entrega',
-  entrega: 'finalizado',
-  finalizado: null,
+  novo: 'producao',
+  producao: 'pronto',
+  pronto: 'entregue',
+  entregue: null,
 };
 
+// Configuração do botão de ação para cada próximo status
 const ACTION_CONFIG: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
-  preparando: { label: 'Iniciar', icon: <ChefHat className="h-4 w-4" />, className: 'action-btn-warning' },
-  entrega: { label: 'Pronto', icon: <Check className="h-4 w-4" />, className: 'action-btn-success' },
-  finalizado: { label: 'Entregar', icon: <Truck className="h-4 w-4" />, className: 'action-btn-secondary' },
+  producao: { label: 'Iniciar', icon: <ChefHat className="h-4 w-4" />, className: 'action-btn-warning' },
+  pronto: { label: 'Concluir', icon: <Check className="h-4 w-4" />, className: 'action-btn-success' },
+  entregue: { label: 'Entregar', icon: <Truck className="h-4 w-4" />, className: 'action-btn-secondary' },
 };
 
 export function OrderCard({ order, onStatusChange }: OrderCardProps) {
-  const minutesAgo = getMinutesAgo(order.created_at);
-  const isUrgent = minutesAgo > 15 && order.status !== 'finalizado';
+  const minutesAgo = getMinutesAgo(order.createdAt);
+  const isUrgent = minutesAgo > 15 && order.status !== 'entregue';
   const nextStatus = NEXT_STATUS[order.status];
   const action = nextStatus ? ACTION_CONFIG[nextStatus] : null;
-
-  const endereco = [order.rua, order.numero].filter(Boolean).join(', ');
-  const enderecoCompleto = [endereco, order.bairro].filter(Boolean).join(' - ');
 
   return (
     <div className={cn(
       'order-card',
-      order.status === 'novo' && 'animate-pulse-subtle border-[hsl(var(--status-new))]/30',
+      order.status === 'novo' && 'animate-pulse-subtle border-status-new/30',
       isUrgent && 'border-destructive/50'
     )}>
-      {/* Cabeçalho: nome + horário */}
-      <div className="flex items-center justify-between mb-2">
+      {/* Cabeçalho */}
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold truncate">{order.customer_name || 'Cliente'}</span>
-          {order.payment_status && <PaymentBadge status={order.payment_status} />}
+          <span className="text-lg font-semibold">#{order.orderNumber}</span>
+          <PaymentBadge status={order.paymentStatus} />
         </div>
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Clock className="h-3 w-3" />
-          <span>{formatTime(order.created_at)}</span>
-          <span>({minutesAgo}min)</span>
+        <div className="flex items-center gap-1 text-sm text-muted-foreground">
+          <Clock className="h-3.5 w-3.5" />
+          <span>{formatTime(order.createdAt)}</span>
+          <span className="text-xs">({minutesAgo}min)</span>
         </div>
       </div>
 
-      {/* Endereço */}
-      {enderecoCompleto && (
-        <div className="flex items-start gap-1 mb-3 text-xs text-muted-foreground">
-          <MapPin className="h-3 w-3 mt-0.5 shrink-0" />
-          <span>{enderecoCompleto}</span>
-        </div>
+      {order.customerName && (
+        <p className="text-sm text-muted-foreground mb-3">{order.customerName}</p>
       )}
 
-      {/* Itens detalhados */}
-      <div className="space-y-2 mb-3">
-        {(order.itens_detalhados ?? []).map((item, idx) => (
-          <div key={idx} className="text-sm">
-            <span className="font-medium">{item.quantidade}x {item.produto}</span>
-            {item.escolhas && item.escolhas.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-1">
-                {item.escolhas.map((e, i) => (
-                  <Badge key={i} variant="secondary" className="text-xs px-1.5 py-0">
-                    {e}
-                  </Badge>
-                ))}
+      {/* Itens */}
+      <div className="space-y-2 mb-4">
+        {(order.items ?? []).map(item => (
+          <div key={item.id} className="text-sm">
+            <div className="flex items-start justify-between">
+              <div>
+                <span className="font-medium">{item.quantity}x {item.name}</span>
+                {item.flavors && item.flavors.length > 0 && (
+                  <p className="text-muted-foreground text-xs mt-0.5">{item.flavors.join(', ')}</p>
+                )}
+                {item.accompaniments && item.accompaniments.length > 0 && (
+                  <p className="text-muted-foreground text-xs">+ {item.accompaniments.join(', ')}</p>
+                )}
               </div>
-            )}
-            {item.observacoes && (
-              <p className="text-xs text-muted-foreground italic mt-0.5 flex items-center gap-1">
-                <AlertCircle className="h-3 w-3" />
-                {item.observacoes}
-              </p>
-            )}
+              <span className="text-muted-foreground">R$ {((item.price ?? 0) * (item.quantity ?? 0)).toFixed(2)}</span>
+            </div>
           </div>
         ))}
       </div>
 
       {/* Total */}
-      <div className="flex items-center justify-between py-2 border-t border-border">
-        <span className="text-sm font-medium">Total</span>
-        <span className="font-semibold">R$ {(order.total_price ?? 0).toFixed(2)}</span>
+      <div className="flex items-center justify-between py-3 border-t border-border">
+        <span className="font-medium">Total</span>
+        <span className="text-lg font-semibold">R$ {(order.total ?? 0).toFixed(2)}</span>
       </div>
 
       {/* Botão de ação */}
       {nextStatus && action && (
-        <div className="mt-2">
+        <div className="mt-3">
           <Button onClick={() => onStatusChange(order.id, nextStatus)} className={cn('w-full gap-2', action.className)} size="sm">
             {action.icon}
             {action.label}

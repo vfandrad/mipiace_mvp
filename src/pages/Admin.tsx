@@ -1,5 +1,6 @@
 /**
  * Dashboard (Admin) — KPIs, gráficos e pedidos recentes
+ * Dados de pedidos vêm da API; dados de vendas continuam mock (sem endpoint de dashboard na API)
  */
 
 import { Header } from '@/components/layout/Header';
@@ -18,11 +19,12 @@ const Admin = () => {
   const { orders, isLoading } = useOrders();
   const kpis = calculateKPIs();
 
+  // Conta pedidos por status usando dados reais da API
   const statusCount = {
     novo: orders.filter(o => o.status === 'novo').length,
-    preparando: orders.filter(o => o.status === 'preparando').length,
-    entrega: orders.filter(o => o.status === 'entrega').length,
-    finalizado: orders.filter(o => o.status === 'finalizado').length,
+    producao: orders.filter(o => o.status === 'producao').length,
+    pronto: orders.filter(o => o.status === 'pronto').length,
+    entregue: orders.filter(o => o.status === 'entregue').length,
   };
 
   return (
@@ -37,6 +39,7 @@ const Admin = () => {
           <DateFilter />
         </div>
 
+        {/* KPIs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <KPICard title="Vendas Hoje" value={kpis.totalHoje} valuePrefix="R$ " change={kpis.changePercent} changeLabel="vs ontem" icon={<DollarSign className="h-5 w-5 text-muted-foreground" />} />
           <KPICard title="Pedidos Hoje" value={kpis.pedidosHoje} change={8.5} changeLabel="vs ontem" icon={<ShoppingCart className="h-5 w-5 text-muted-foreground" />} />
@@ -44,6 +47,7 @@ const Admin = () => {
           <KPICard title="Vendas Semana" value={kpis.totalSemana} valuePrefix="R$ " change={12.4} changeLabel="vs semana passada" icon={<Package className="h-5 w-5 text-muted-foreground" />} />
         </div>
 
+        {/* Gráficos — empilham em mobile, 2 colunas em desktop */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <SalesChart data={mockSalesData} />
           <ProductsChart data={mockProductSales} />
@@ -57,14 +61,14 @@ const Admin = () => {
             ) : (
               <div className="grid grid-cols-2 gap-3">
                 {([
-                  { key: 'novo', label: 'Novos', bg: 'bg-[hsl(var(--status-new-bg))]', text: 'text-[hsl(var(--status-new))]' },
-                  { key: 'preparando', label: 'Preparando', bg: 'bg-[hsl(var(--status-production-bg))]', text: 'text-[hsl(var(--status-production))]' },
-                  { key: 'entrega', label: 'Entrega', bg: 'bg-[hsl(var(--status-ready-bg))]', text: 'text-[hsl(var(--status-ready))]' },
-                  { key: 'finalizado', label: 'Finalizados', bg: 'bg-[hsl(var(--status-delivered-bg))]', text: 'text-[hsl(var(--status-delivered))]' },
+                  { key: 'novo', label: 'Novos', bg: 'bg-status-new-bg', text: 'text-status-new' },
+                  { key: 'producao', label: 'Em Produção', bg: 'bg-status-production-bg', text: 'text-status-production' },
+                  { key: 'pronto', label: 'Prontos', bg: 'bg-status-ready-bg', text: 'text-status-ready' },
+                  { key: 'entregue', label: 'Entregues', bg: 'bg-status-delivered-bg', text: 'text-status-delivered' },
                 ] as const).map(s => (
                   <div key={s.key} className={`p-3 sm:p-4 rounded-lg ${s.bg}`}>
                     <p className={`text-2xl sm:text-3xl font-bold ${s.text}`}>{statusCount[s.key]}</p>
-                    <p className={`text-xs sm:text-sm ${s.text} mt-1 opacity-80`}>{s.label}</p>
+                    <p className={`text-xs sm:text-sm ${s.text}/80 mt-1`}>{s.label}</p>
                   </div>
                 ))}
               </div>
