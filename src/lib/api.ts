@@ -47,10 +47,44 @@ export function fetchInventory(): Promise<InventoryResponse> {
 export function patchInventoryItem(
   type: 'product' | 'complement',
   id: string,
-  data: Partial<{ is_available: boolean; base_price: number; extra_price: number }>
+  data: Partial<{ is_available: boolean; base_price: number; extra_price: number; name: string }>
 ): Promise<unknown> {
   return request(`/products/${type}/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(data),
   });
+}
+
+// POST novo produto
+export function createProduct(data: { name: string; base_price: number; is_available: boolean }): Promise<ApiProduct> {
+  return request<ApiProduct>('/products/product', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+// POST novo grupo de complementos
+export function createComplementGroup(data: { name: string; min_choices: number; max_choices: number; is_required: boolean }): Promise<unknown> {
+  return request('/products/complement_group', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+// POST novo complemento
+export function createComplement(data: { name: string; extra_price: number; group_id: string; is_available: boolean }): Promise<unknown> {
+  return request('/products/complement', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+// DELETE produto ou complemento
+export function deleteInventoryItem(type: 'product' | 'complement', id: string): Promise<unknown> {
+  return request(`/products/${type}/${id}`, { method: 'DELETE' });
+}
+
+// DELETE grupo
+export function deleteComplementGroup(id: string): Promise<unknown> {
+  return request(`/products/complement_group/${id}`, { method: 'DELETE' });
 }
