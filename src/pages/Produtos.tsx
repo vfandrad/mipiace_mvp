@@ -1,261 +1,222 @@
 /**
- * Página de Produtos — CRUD com categorias
- * Produtos agrupados por categoria em tabelas separadas
+ * Página de Produtos — Gestão de Inventário
+ * Exibe Produtos e seus Grupos de Complementos em hierarquia
+ * Toggle de disponibilidade via PATCH /products/{type}/{id}
+ * Edição profunda via Sheet lateral (drill-down nos grupos)
  */
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, Trash2, FolderPlus } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Badge } from '@/components/ui/badge';
+import { Settings2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useProducts } from '@/hooks/use-products';
-
-const EMPTY_PRODUCT_FORM = { nome: '', preco: '', disponivel: true, categoria: '' };
-const EMPTY_CATEGORY_FORM = { nome: '' };
+import { ApiProduct, ApiGroup, ApiComplement } from '@/types/order';
 
 const Produtos = () => {
-  const {
-    products, isLoading, addProduct, removeProduct, toggleAvailability,
-    categories, addCategory, removeCategory, isSaving,
-  } = useProducts();
-  const [productForm, setProductForm] = useState(EMPTY_PRODUCT_FORM);
-  const [categoryForm, setCategoryForm] = useState(EMPTY_CATEGORY_FORM);
-  const [productDialogOpen, setProductDialogOpen] = useState(false);
-  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
-  const { toast } = useToast();
+  const { products, groups, complements, isLoading, toggleAvailability, isSaving } = useProducts();
 
-  // Agrupa produtos por categoria
-  const groupedProducts = useMemo(() => {
-    const groups: Record<string, typeof products> = {};
-    for (const p of products) {
-      const cat = p.categoria || 'Sem categoria';
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(p);
-    }
-    // Ordena: categorias cadastradas primeiro, depois "Sem categoria"
-    const sortedKeys = [
-      ...categories.filter(c => groups[c]),
-      ...Object.keys(groups).filter(k => !categories.includes(k)),
-    ];
-    return sortedKeys.map(key => ({ category: key, items: groups[key] }));
-  }, [products, categories]);
+  // Sheet de edição profunda: mostra grupos e complementos de um produto
+  const [selectedProduct, setSelectedProduct] = useState<ApiProduct | null>(null);
 
-  const handleSaveProduct = async () => {
-    if (!productForm.nome.trim() || !productForm.preco) {
-      toast({ title: 'Preencha todos os campos', variant: 'destructive' });
-      return;
-    }
-    const preco = parseFloat(productForm.preco);
-    if (isNaN(preco) || preco <= 0) {
-      toast({ title: 'Preço inválido', variant: 'destructive' });
-      return;
-    }
+  // Complementos agrupados por grupo
+  const complementsByGroup = (groupId: string) =>
+    complements.filter(c => c.group_id === groupId);
 
-    try {
-      await addProduct(productForm.nome.trim(), preco, productForm.disponivel, productForm.categoria || 'Sem categoria');
-      toast({ title: 'Produto cadastrado' });
-      setProductDialogOpen(false);
-      setProductForm(EMPTY_PRODUCT_FORM);
-    } catch {
-      toast({ title: 'Erro ao salvar produto', variant: 'destructive' });
-    }
+  const handleToggleProduct = (product: ApiProduct) => {
+    toggleAvailability('product', product.id, !product.is_available);
+    toast.success(`${product.name} ${!product.is_available ? 'disponível' : 'indisponível'}`);
   };
 
-  const handleSaveCategory = () => {
-    const nome = categoryForm.nome.trim();
-    if (!nome) {
-      toast({ title: 'Informe o nome da categoria', variant: 'destructive' });
-      return;
-    }
-    if (categories.includes(nome)) {
-      toast({ title: 'Categoria já existe', variant: 'destructive' });
-      return;
-    }
-    addCategory(nome);
-    toast({ title: 'Categoria criada' });
-    setCategoryDialogOpen(false);
-    setCategoryForm(EMPTY_CATEGORY_FORM);
-  };
-
-  const handleDelete = async (id: string) => {
-    try {
-      await removeProduct(id);
-      toast({ title: 'Produto removido' });
-    } catch {
-      toast({ title: 'Erro ao remover produto', variant: 'destructive' });
-    }
+  const handleToggleComplement = (complement: ApiComplement) => {
+    toggleAvailability('complement', complement.id, !complement.is_available);
+    toast.success(`${complement.name} ${!complement.is_available ? 'disponível' : 'indisponível'}`);
   };
 
   return (
     <div className="min-h-screen bg-background">
       <Header />
       <main className="container py-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Produtos</h1>
-            <p className="text-muted-foreground">Gerencie o cardápio da gelateria</p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => { setCategoryForm(EMPTY_CATEGORY_FORM); setCategoryDialogOpen(true); }}>
-              <FolderPlus className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">Nova Categoria</span>
-            </Button>
-            <Button onClick={() => { setProductForm(EMPTY_PRODUCT_FORM); setProductDialogOpen(true); }}>
-              <Plus className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">Novo Produto</span>
-            </Button>
-          </div>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Produtos</h1>
+          <p className="text-muted-foreground">Gerencie o cardápio e complementos</p>
         </div>
 
-        {/* Dialog: Nova Categoria */}
-        <Dialog open={categoryDialogOpen} onOpenChange={setCategoryDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Nova Categoria</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 pt-2">
-              <div className="space-y-2">
-                <Label htmlFor="cat-nome">Nome</Label>
-                <Input
-                  id="cat-nome"
-                  value={categoryForm.nome}
-                  onChange={e => setCategoryForm({ nome: e.target.value })}
-                  placeholder="Ex: Potes, Casquinhas, Extras"
-                />
-              </div>
-              <Button onClick={handleSaveCategory} className="w-full">
-                Criar Categoria
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Dialog: Novo Produto */}
-        <Dialog open={productDialogOpen} onOpenChange={setProductDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Novo Produto</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 pt-2">
-              <div className="space-y-2">
-                <Label htmlFor="prod-nome">Nome</Label>
-                <Input
-                  id="prod-nome"
-                  value={productForm.nome}
-                  onChange={e => setProductForm(f => ({ ...f, nome: e.target.value }))}
-                  placeholder="Ex: Gelato Pistache"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="prod-preco">Preço (R$)</Label>
-                <Input
-                  id="prod-preco"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={productForm.preco}
-                  onChange={e => setProductForm(f => ({ ...f, preco: e.target.value }))}
-                  placeholder="0.00"
-                />
-              </div>
-              {categories.length > 0 && (
-                <div className="space-y-2">
-                  <Label>Categoria</Label>
-                  <Select value={productForm.categoria} onValueChange={val => setProductForm(f => ({ ...f, categoria: val }))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione uma categoria" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map(c => (
-                        <SelectItem key={c} value={c}>{c}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              <div className="flex items-center justify-between">
-                <Label htmlFor="prod-disponivel">Disponível para venda</Label>
-                <Switch
-                  id="prod-disponivel"
-                  checked={productForm.disponivel}
-                  onCheckedChange={val => setProductForm(f => ({ ...f, disponivel: val }))}
-                />
-              </div>
-              <Button onClick={handleSaveProduct} className="w-full" disabled={isSaving}>
-                {isSaving ? 'Salvando...' : 'Cadastrar Produto'}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Conteúdo */}
         {isLoading ? (
           <div className="space-y-3">
             {[1, 2, 3].map(i => <Skeleton key={i} className="h-20 w-full" />)}
           </div>
-        ) : groupedProducts.length === 0 ? (
-          <div className="kpi-card p-8 text-center text-muted-foreground">
-            Nenhum produto cadastrado. Crie uma categoria e adicione produtos.
-          </div>
         ) : (
-          groupedProducts.map(({ category, items }) => (
-            <div key={category} className="kpi-card">
-              <div className="flex items-center justify-between px-4 pt-4 pb-2">
-                <h2 className="text-lg font-semibold">{category}</h2>
-                {category !== 'Sem categoria' && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => {
-                      removeCategory(category);
-                      toast({ title: 'Categoria removida' });
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nome</TableHead>
-                    <TableHead className="text-right">Preço</TableHead>
-                    <TableHead className="text-center">Disponível</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map(p => (
-                    <TableRow key={p.id}>
-                      <TableCell className="font-medium">{p.nome}</TableCell>
-                      <TableCell className="text-right">R$ {(p.preco ?? 0).toFixed(2)}</TableCell>
-                      <TableCell className="text-center">
-                        <Switch
-                          checked={p.disponivel}
-                          onCheckedChange={(val) => toggleAvailability(p.id, val)}
-                        />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(p.id)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </TableCell>
+          <>
+            {/* Tabela de Produtos */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Produtos</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nome</TableHead>
+                      <TableHead className="text-right">Preço</TableHead>
+                      <TableHead className="text-center">Disponível</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          ))
+                  </TableHeader>
+                  <TableBody>
+                    {products.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                          Nenhum produto cadastrado na API
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      products.map(p => (
+                        <TableRow key={p.id}>
+                          <TableCell className="font-medium">{p.name}</TableCell>
+                          <TableCell className="text-right">R$ {(p.base_price ?? 0).toFixed(2)}</TableCell>
+                          <TableCell className="text-center">
+                            <Switch
+                              checked={p.is_available}
+                              onCheckedChange={() => handleToggleProduct(p)}
+                              disabled={isSaving}
+                            />
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="ghost" size="icon" onClick={() => setSelectedProduct(p)}>
+                              <Settings2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            {/* Tabelas de Complementos por Grupo */}
+            {groups.map(group => {
+              const groupComplements = complementsByGroup(group.id);
+              return (
+                <Card key={group.id}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg">{group.name}</CardTitle>
+                      <div className="flex gap-2">
+                        <Badge variant="outline">
+                          {group.is_required ? 'Obrigatório' : 'Opcional'}
+                        </Badge>
+                        <Badge variant="secondary">
+                          {group.min_choices}–{group.max_choices} escolhas
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Nome</TableHead>
+                          <TableHead className="text-right">Preço Extra</TableHead>
+                          <TableHead className="text-center">Disponível</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {groupComplements.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={3} className="text-center text-muted-foreground py-4">
+                              Sem complementos neste grupo
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          groupComplements.map(c => (
+                            <TableRow key={c.id}>
+                              <TableCell className="font-medium">{c.name}</TableCell>
+                              <TableCell className="text-right">
+                                {c.extra_price > 0 ? `R$ ${c.extra_price.toFixed(2)}` : 'Incluso'}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Switch
+                                  checked={c.is_available}
+                                  onCheckedChange={() => handleToggleComplement(c)}
+                                  disabled={isSaving}
+                                />
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </>
         )}
+
+        {/* Sheet de edição profunda do produto */}
+        <Sheet open={!!selectedProduct} onOpenChange={(open) => !open && setSelectedProduct(null)}>
+          <SheetContent>
+            <SheetHeader>
+              <SheetTitle>{selectedProduct?.name}</SheetTitle>
+            </SheetHeader>
+            {selectedProduct && (
+              <div className="space-y-6 mt-6">
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">Preço Base</p>
+                  <p className="text-2xl font-bold">R$ {(selectedProduct.base_price ?? 0).toFixed(2)}</p>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Disponível</span>
+                  <Switch
+                    checked={selectedProduct.is_available}
+                    onCheckedChange={() => {
+                      handleToggleProduct(selectedProduct);
+                      setSelectedProduct({ ...selectedProduct, is_available: !selectedProduct.is_available });
+                    }}
+                  />
+                </div>
+
+                <div className="border-t pt-4">
+                  <h4 className="font-semibold mb-3">Grupos de Complementos</h4>
+                  {groups.map(group => (
+                    <div key={group.id} className="mb-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="font-medium text-sm">{group.name}</span>
+                        <Badge variant="outline" className="text-xs">
+                          {group.min_choices}–{group.max_choices}
+                        </Badge>
+                        {group.is_required && (
+                          <Badge variant="destructive" className="text-xs">Obrigatório</Badge>
+                        )}
+                      </div>
+                      <div className="space-y-1 pl-2">
+                        {complementsByGroup(group.id).map(c => (
+                          <div key={c.id} className="flex items-center justify-between text-sm py-1">
+                            <span className={c.is_available ? '' : 'text-muted-foreground line-through'}>
+                              {c.name}
+                            </span>
+                            <span className="text-muted-foreground">
+                              {c.extra_price > 0 ? `+R$ ${c.extra_price.toFixed(2)}` : 'Incluso'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </SheetContent>
+        </Sheet>
       </main>
     </div>
   );

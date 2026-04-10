@@ -1,6 +1,5 @@
 /**
  * Dashboard (Admin) — KPIs, gráficos e pedidos recentes
- * Dados de pedidos vêm da API; dados de vendas continuam mock (sem endpoint de dashboard na API)
  */
 
 import { Header } from '@/components/layout/Header';
@@ -14,17 +13,17 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useOrders } from '@/hooks/use-orders';
 import { mockSalesData, mockProductSales, mockHourlySales, calculateKPIs } from '@/lib/mock-data';
 import { DollarSign, ShoppingCart, TrendingUp, Package } from 'lucide-react';
+import { OrderStatus } from '@/types/order';
 
 const Admin = () => {
   const { orders, isLoading } = useOrders();
   const kpis = calculateKPIs();
 
-  // Conta pedidos por status usando dados reais da API
-  const statusCount = {
+  const statusCount: Record<OrderStatus, number> = {
     novo: orders.filter(o => o.status === 'novo').length,
-    producao: orders.filter(o => o.status === 'producao').length,
-    pronto: orders.filter(o => o.status === 'pronto').length,
-    entregue: orders.filter(o => o.status === 'entregue').length,
+    preparando: orders.filter(o => o.status === 'preparando').length,
+    entrega: orders.filter(o => o.status === 'entrega').length,
+    finalizado: orders.filter(o => o.status === 'finalizado').length,
   };
 
   return (
@@ -39,7 +38,6 @@ const Admin = () => {
           <DateFilter />
         </div>
 
-        {/* KPIs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <KPICard title="Vendas Hoje" value={kpis.totalHoje} valuePrefix="R$ " change={kpis.changePercent} changeLabel="vs ontem" icon={<DollarSign className="h-5 w-5 text-muted-foreground" />} />
           <KPICard title="Pedidos Hoje" value={kpis.pedidosHoje} change={8.5} changeLabel="vs ontem" icon={<ShoppingCart className="h-5 w-5 text-muted-foreground" />} />
@@ -47,7 +45,6 @@ const Admin = () => {
           <KPICard title="Vendas Semana" value={kpis.totalSemana} valuePrefix="R$ " change={12.4} changeLabel="vs semana passada" icon={<Package className="h-5 w-5 text-muted-foreground" />} />
         </div>
 
-        {/* Gráficos — empilham em mobile, 2 colunas em desktop */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <SalesChart data={mockSalesData} />
           <ProductsChart data={mockProductSales} />
@@ -61,10 +58,10 @@ const Admin = () => {
             ) : (
               <div className="grid grid-cols-2 gap-3">
                 {([
-                  { key: 'novo', label: 'Novos', bg: 'bg-status-new-bg', text: 'text-status-new' },
-                  { key: 'producao', label: 'Em Produção', bg: 'bg-status-production-bg', text: 'text-status-production' },
-                  { key: 'pronto', label: 'Prontos', bg: 'bg-status-ready-bg', text: 'text-status-ready' },
-                  { key: 'entregue', label: 'Entregues', bg: 'bg-status-delivered-bg', text: 'text-status-delivered' },
+                  { key: 'novo' as const, label: 'Novos', bg: 'bg-status-new-bg', text: 'text-status-new' },
+                  { key: 'preparando' as const, label: 'Preparando', bg: 'bg-status-production-bg', text: 'text-status-production' },
+                  { key: 'entrega' as const, label: 'Entrega', bg: 'bg-status-ready-bg', text: 'text-status-ready' },
+                  { key: 'finalizado' as const, label: 'Finalizados', bg: 'bg-status-delivered-bg', text: 'text-status-delivered' },
                 ] as const).map(s => (
                   <div key={s.key} className={`p-3 sm:p-4 rounded-lg ${s.bg}`}>
                     <p className={`text-2xl sm:text-3xl font-bold ${s.text}`}>{statusCount[s.key]}</p>

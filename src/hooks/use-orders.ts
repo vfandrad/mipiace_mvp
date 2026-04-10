@@ -1,24 +1,28 @@
 /**
  * Hook para buscar e atualizar pedidos via API
- * Usa React Query para cache, refetch automático e mutations
+ * Converte o formato da API para o formato do frontend
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchOrders, updateOrderStatus, ApiOrder } from '@/lib/api';
-import { Order, OrderStatus, PaymentStatus } from '@/types/order';
+import { fetchOrders, updateOrderStatus } from '@/lib/api';
+import { Order, OrderStatus, ApiOrder } from '@/types/order';
 
-// Converte o formato da API (snake_case) para o formato do frontend (camelCase)
 function toOrder(api: ApiOrder): Order {
   return {
     id: api.id,
-    orderNumber: api.order_number,
+    customerName: api.customer_name ?? '',
+    customerPhone: api.customer_phone,
+    totalPrice: api.total_price ?? 0,
+    address: {
+      rua: api.rua ?? '',
+      numero: api.numero ?? '',
+      bairro: api.bairro ?? '',
+      complemento: api.complemento_endereco,
+    },
     status: api.status as OrderStatus,
-    paymentStatus: api.payment_status as PaymentStatus,
-    items: api.items,
-    total: api.total,
-    customerName: api.customer_name,
+    paymentStatus: api.payment_status as 'pago' | 'pendente',
     createdAt: new Date(api.created_at),
-    updatedAt: new Date(api.updated_at),
+    items: api.order_items ?? [],
   };
 }
 
@@ -28,19 +32,19 @@ export function useOrders() {
   const query = useQuery({
     queryKey: ['orders'],
     queryFn: fetchOrders,
-    select: (data) => data.map(toOrder),
-    refetchInterval: 15000, // Atualiza a cada 15s para ver novos pedidos
+    select: (data) => (data ?? []).map(toOrder),
+    refetchInterval: 15000,
   });
 
   const mutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: OrderStatus }) =>
       updateOrderStatus(id, status),
-    // Atualização otimista: muda o status localmente antes da resposta da API
+    // Atualização otimista
     onMutate: async ({ id, status }) => {
       await queryClient.cancelQueries({ queryKey: ['orders'] });
       const previous = queryClient.getQueryData<ApiOrder[]>(['orders']);
       queryClient.setQueryData<ApiOrder[]>(['orders'], (old) =>
-        old?.map((o) => (o.id === id ? { ...o, status, updated_at: new Date().toISOString() } : o))
+        old?.map((o) => (o.id === id ? { ...o, status } : o))
       );
       return { previous };
     },

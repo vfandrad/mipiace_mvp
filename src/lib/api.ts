@@ -3,6 +3,8 @@
  * Centraliza todas as chamadas HTTP do projeto
  */
 
+import { InventoryResponse, ApiOrder } from '@/types/order';
+
 const BASE_URL = 'https://api.vfandrade.com';
 
 // Helper genérico para fetch com tratamento de erro
@@ -16,29 +18,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 // ========================================
-// Pedidos (Orders)
+// Pedidos
 // ========================================
-
-export interface ApiOrderItem {
-  id: string;
-  name: string;
-  quantity: number;
-  flavors: string[];
-  accompaniments?: string[];
-  price: number;
-}
-
-export interface ApiOrder {
-  id: string;
-  order_number: number;
-  status: string;
-  payment_status: string;
-  items: ApiOrderItem[];
-  total: number;
-  customer_name?: string;
-  created_at: string;
-  updated_at: string;
-}
 
 export function fetchOrders(): Promise<ApiOrder[]> {
   return request<ApiOrder[]>('/orders/');
@@ -52,24 +33,24 @@ export function updateOrderStatus(id: string, status: string): Promise<ApiOrder>
 }
 
 // ========================================
-// Produtos (Products)
+// Inventário (Produtos + Grupos + Complementos)
 // ========================================
 
-export interface ApiProduct {
-  id: string;
-  name: string;
-  price: number;
-  is_available: boolean;
+export function fetchInventory(): Promise<InventoryResponse> {
+  return request<InventoryResponse>('/products/');
 }
 
-export function fetchProducts(): Promise<ApiProduct[]> {
-  return request<ApiProduct[]>('/products/');
-}
-
-export function createProduct(data: { name: string; price: number; is_available: boolean }): Promise<ApiProduct> {
-  return request<ApiProduct>('/products/', { method: 'POST', body: JSON.stringify(data) });
-}
-
-export function deleteProduct(id: string): Promise<void> {
-  return request<void>(`/products/${id}`, { method: 'DELETE' });
+/**
+ * Atualiza disponibilidade ou preço de um produto/complemento
+ * type: 'product' | 'complement'
+ */
+export function patchInventoryItem(
+  type: 'product' | 'complement',
+  id: string,
+  data: Partial<{ is_available: boolean; base_price: number; extra_price: number }>
+): Promise<unknown> {
+  return request(`/products/${type}/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
 }

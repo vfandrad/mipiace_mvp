@@ -1,64 +1,109 @@
 /**
- * Tipos relacionados a pedidos da gelateria
- * Esses tipos são usados em todo o sistema para tipagem de dados
+ * Tipos do sistema Mi Piace
+ * Refletem os contratos reais da API (api.vfandrade.com)
  */
 
-// Status possíveis de um pedido no fluxo de produção
-export type OrderStatus = 'novo' | 'producao' | 'pronto' | 'entregue';
+// ========================================
+// Pedidos
+// ========================================
 
-// Status de pagamento do pedido
+export type OrderStatus = 'novo' | 'preparando' | 'entrega' | 'finalizado';
 export type PaymentStatus = 'pago' | 'pendente';
 
-// Item individual dentro de um pedido
+/** Item de pedido como vem da API */
 export interface OrderItem {
   id: string;
-  name: string;
+  product_id: string;
   quantity: number;
-  flavors: string[];
-  accompaniments?: string[];
-  price: number;
+  details?: string;
+  complement_ids: string[];
+  products: { name: string };
 }
 
-// Pedido completo
+/** Pedido como vem da API */
+export interface ApiOrder {
+  id: string;
+  customer_name: string;
+  customer_phone?: string;
+  total_price: number;
+  rua: string;
+  numero: string;
+  bairro: string;
+  complemento_endereco?: string | null;
+  status: string;
+  payment_status: string;
+  created_at: string;
+  order_items: OrderItem[];
+}
+
+/** Pedido normalizado para o frontend */
 export interface Order {
   id: string;
-  orderNumber: number;
+  customerName: string;
+  customerPhone?: string;
+  totalPrice: number;
+  address: {
+    rua: string;
+    numero: string;
+    bairro: string;
+    complemento?: string | null;
+  };
   status: OrderStatus;
   paymentStatus: PaymentStatus;
-  items: OrderItem[];
-  total: number;
-  customerName?: string;
   createdAt: Date;
-  updatedAt: Date;
+  items: OrderItem[];
 }
 
 // ========================================
-// Tipos para Dashboard e Gráficos
+// Inventário (Produtos + Grupos + Complementos)
 // ========================================
 
-// Dados para cards de KPI (indicadores chave)
-export interface KPIData {
-  title: string;
-  value: string | number;
-  change?: number;
-  changeLabel?: string;
+export interface ApiProduct {
+  id: string;
+  name: string;
+  base_price: number;
+  is_available: boolean;
 }
 
-// Dados de vendas diárias (para gráfico de linha)
+export interface ApiGroup {
+  id: string;
+  name: string;
+  min_choices: number;
+  max_choices: number;
+  is_required: boolean;
+}
+
+export interface ApiComplement {
+  id: string;
+  group_id: string;
+  name: string;
+  extra_price: number;
+  is_available: boolean;
+}
+
+/** Resposta completa de GET /products/ */
+export interface InventoryResponse {
+  products: ApiProduct[];
+  groups: ApiGroup[];
+  complements: ApiComplement[];
+}
+
+// ========================================
+// Dashboard (mock — sem endpoint de métricas)
+// ========================================
+
 export interface SalesData {
   date: string;
   total: number;
   orders: number;
 }
 
-// Dados de vendas por produto (para gráfico de barras)
 export interface ProductSalesData {
   name: string;
   sales: number;
   revenue: number;
 }
 
-// Dados de vendas por horário (para gráfico de área)
 export interface HourlySalesData {
   hour: string;
   orders: number;
