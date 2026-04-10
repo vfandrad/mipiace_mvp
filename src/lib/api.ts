@@ -3,7 +3,7 @@
  * Centraliza todas as chamadas HTTP do projeto
  */
 
-import { InventoryResponse, ApiOrder } from '@/types/order';
+import { InventoryResponse, ApiOrder, ApiProduct } from '@/types/order';
 
 const BASE_URL = 'https://api.vfandrade.com';
 
