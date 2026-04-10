@@ -21,7 +21,7 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
 const KANBAN_STATUSES: OrderStatus[] = ['novo', 'preparando', 'entrega', 'finalizado'];
 
 const Loja = () => {
-  const { orders, isLoading } = useOrders();
+  const { orders, isLoading, changeStatus } = useOrders();
   const { complementMap } = useProducts();
   const { toast } = useToast();
 
@@ -29,8 +29,6 @@ const Loja = () => {
     changeStatus(orderId, newStatus);
     toast({ title: 'Status atualizado', description: `Pedido movido para ${STATUS_LABELS[newStatus]}` });
   };
-
-  const { changeStatus } = useOrders();
 
   return (
     <div className="min-h-screen bg-background">
