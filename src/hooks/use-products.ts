@@ -122,7 +122,7 @@ export function useProducts() {
       editMutation.mutateAsync({ type, id, data }),
     createProduct: (data: { name: string; base_price: number; is_available: boolean }) =>
       createProductMut.mutateAsync(data),
-    createGroup: (data: { name: string; min_choices: number; max_choices: number; is_required: boolean }) =>
+    createGroup: (data: { name: string; min_choices: number; max_choices: number }) =>
       createGroupMut.mutateAsync(data),
     createComplement: (data: { name: string; extra_price: number; group_id: string; is_available: boolean }) =>
       createComplementMut.mutateAsync(data),

@@ -31,7 +31,7 @@ export const CreateProductDialog = ({ open, onOpenChange, onCreate }: Props) => 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>Novo Produto</DialogTitle>
         </DialogHeader>
