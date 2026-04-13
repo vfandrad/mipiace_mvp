@@ -8,21 +8,22 @@ import { Switch } from '@/components/ui/switch';
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreate: (data: { name: string; min_choices: number; max_choices: number }) => Promise<unknown>;
+  onCreate: (data: { name: string; min_choices: number; max_choices: number; is_required: boolean }) => Promise<unknown>;
 }
 
 export const CreateGroupDialog = ({ open, onOpenChange, onCreate }: Props) => {
   const [name, setName] = useState('');
   const [min, setMin] = useState('0');
   const [max, setMax] = useState('3');
+  const [required, setRequired] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
     if (!name.trim()) return;
     setLoading(true);
     try {
-      await onCreate({ name: name.trim(), min_choices: parseInt(min) || 0, max_choices: parseInt(max) || 1 });
-      setName(''); setMin('0'); setMax('3');
+      await onCreate({ name: name.trim(), min_choices: parseInt(min) || 0, max_choices: parseInt(max) || 1, is_required: required });
+      setName(''); setMin('0'); setMax('3'); setRequired(false);
       onOpenChange(false);
     } finally {
       setLoading(false);
@@ -31,7 +32,7 @@ export const CreateGroupDialog = ({ open, onOpenChange, onCreate }: Props) => {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent aria-describedby={undefined}>
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Nova Categoria / Grupo</DialogTitle>
         </DialogHeader>
@@ -49,6 +50,10 @@ export const CreateGroupDialog = ({ open, onOpenChange, onCreate }: Props) => {
               <Label>Máx. Escolhas</Label>
               <Input type="number" value={max} onChange={e => setMax(e.target.value)} />
             </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <Label>Obrigatório</Label>
+            <Switch checked={required} onCheckedChange={setRequired} />
           </div>
         </div>
         <DialogFooter>

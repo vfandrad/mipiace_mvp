@@ -32,7 +32,7 @@ export const CreateComplementDialog = ({ open, onOpenChange, groupId, onCreate }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent aria-describedby={undefined}>
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Novo Complemento</DialogTitle>
         </DialogHeader>

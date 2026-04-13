@@ -1,10 +1,12 @@
-/** Hook de pedidos — busca e atualiza status via API */
+/**
+ * Hook para buscar e atualizar pedidos via API
+ * Converte o formato da API para o formato do frontend
+ */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchOrders, updateOrderStatus } from '@/lib/api';
 import { Order, OrderStatus, ApiOrder } from '@/types/order';
 
-/** Converte formato da API para formato do frontend */
 function toOrder(api: ApiOrder): Order {
   return {
     id: api.id,
@@ -25,31 +27,33 @@ function toOrder(api: ApiOrder): Order {
 }
 
 export function useOrders() {
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
 
   const query = useQuery({
     queryKey: ['orders'],
     queryFn: fetchOrders,
     select: (data) => (data ?? []).map(toOrder),
-    refetchInterval: 15000, // Atualiza a cada 15s
+    refetchInterval: 15000,
   });
 
   const mutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: OrderStatus }) =>
       updateOrderStatus(id, status),
-    // Optimistic UI
+    // Atualização otimista
     onMutate: async ({ id, status }) => {
-      await qc.cancelQueries({ queryKey: ['orders'] });
-      const prev = qc.getQueryData<ApiOrder[]>(['orders']);
-      qc.setQueryData<ApiOrder[]>(['orders'], (old) =>
+      await queryClient.cancelQueries({ queryKey: ['orders'] });
+      const previous = queryClient.getQueryData<ApiOrder[]>(['orders']);
+      queryClient.setQueryData<ApiOrder[]>(['orders'], (old) =>
         old?.map((o) => (o.id === id ? { ...o, status } : o))
       );
-      return { prev };
+      return { previous };
     },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) qc.setQueryData(['orders'], ctx.prev);
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(['orders'], context.previous);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['orders'] }),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+    },
   });
 
   return {

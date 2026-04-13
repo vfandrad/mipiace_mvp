@@ -1,10 +1,13 @@
-/** Página de Produtos — CRUD de inventário via API */
+/**
+ * Página de Produtos — CRUD completo de Inventário
+ * POST/PATCH/DELETE via API, com Dialogs, Sheets e AlertDialogs
+ */
 
 import { useState } from 'react';
 import { Header } from '@/components/layout/Header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useProducts } from '@/hooks/use-products';
-import { ApiProduct, ApiComplement } from '@/types/order';
+import { ApiProduct, ApiGroup, ApiComplement } from '@/types/order';
 import { ProductsHeader } from '@/components/products/ProductsHeader';
 import { ProductsTable } from '@/components/products/ProductsTable';
 import { GroupCard } from '@/components/products/GroupCard';
@@ -18,12 +21,19 @@ const Produtos = () => {
   const hook = useProducts();
   const { products, groups, complements, isLoading } = hook;
 
-  // Controle de dialogs
+  // Dialog states
   const [showNewProduct, setShowNewProduct] = useState(false);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [newComplementGroupId, setNewComplementGroupId] = useState<string | null>(null);
+
+  // Edit sheet
   const [editTarget, setEditTarget] = useState<{ type: 'product' | 'complement'; item: ApiProduct | ApiComplement } | null>(null);
+
+  // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'product' | 'complement' | 'group'; id: string; name: string } | null>(null);
+
+  const complementsByGroup = (groupId: string) =>
+    complements.filter(c => c.group_id === groupId);
 
   const handleDelete = () => {
     if (!deleteTarget) return;
@@ -38,7 +48,7 @@ const Produtos = () => {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <main className="container py-4 sm:py-6 space-y-4 sm:space-y-6">
+      <main className="container py-6 space-y-6">
         <ProductsHeader
           onNewProduct={() => setShowNewProduct(true)}
           onNewGroup={() => setShowNewGroup(true)}
@@ -62,7 +72,7 @@ const Produtos = () => {
               <GroupCard
                 key={group.id}
                 group={group}
-                complements={complements.filter(c => c.group_id === group.id)}
+                complements={complementsByGroup(group.id)}
                 isSaving={hook.isSaving}
                 onToggleComplement={(c) => hook.toggleAvailability('complement', c.id, !c.is_available)}
                 onEditComplement={(c) => setEditTarget({ type: 'complement', item: c })}
@@ -74,7 +84,7 @@ const Produtos = () => {
           </>
         )}
 
-        {/* Dialogs de criação, edição e exclusão */}
+        {/* Dialogs */}
         <CreateProductDialog open={showNewProduct} onOpenChange={setShowNewProduct} onCreate={hook.createProduct} />
         <CreateGroupDialog open={showNewGroup} onOpenChange={setShowNewGroup} onCreate={hook.createGroup} />
         <CreateComplementDialog
