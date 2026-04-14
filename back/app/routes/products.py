@@ -67,11 +67,35 @@ async def delete_item(type: str, id: str, db=Depends(get_db)):
 @router.post("/{type}")
 async def create_item(type: str, data: dict, db=Depends(get_db)):
     """
-    Cria um novo produto ou complemento.
+    Cria um novo produto, complemento ou grupo de complementos.
     """
-    table = "products" if type == "product" else "complements"
+    # 1. MAPEAMENTO DE TABELAS (O que faltava)
+    if type == "product":
+        table = "products"
+    elif type == "complement":
+        table = "complements"
+    elif type == "complement_group":
+        table = "complement_groups"
+    else:
+        raise HTTPException(status_code=400, detail="Tipo de item inválido")
+
     try:
+        # 2. LIMPEZA DE DADOS (Garantir que o que vai pro banco é o que o banco espera)
+        # Se for categoria, garantimos que campos numéricos não sejam strings
+        if type == "complement_group":
+            data["min_choices"] = int(data.get("min_choices", 0))
+            data["max_choices"] = int(data.get("max_choices", 1))
+            data["is_required"] = bool(data.get("is_required", False))
+
+        # 3. INSERÇÃO NO SUPABASE/BANCO
         res = db.table(table).insert(data).execute()
+        
+        if not res.data:
+            raise Exception("Nenhum dado retornado após inserção")
+            
         return res.data[0]
+        
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Erro ao criar: {str(e)}")
+        # Aqui o log vai te dizer exatamente qual coluna está faltando se o erro persistir
+        print(f"ERRO NO BANCO: {str(e)}") 
+        raise HTTPException(status_code=400, detail=f"Erro ao criar no banco: {str(e)}")
