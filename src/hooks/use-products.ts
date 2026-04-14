@@ -71,7 +71,8 @@ export function useProducts() {
 
   // Criar grupo (agora com product_id)
   const createGroupMutation = useMutation({
-    mutationFn: createComplementGroup,
+    mutationFn: (data: { name: string; min_choices: number; max_choices: number; product_id: string }) =>
+      createComplementGroup(data),
     onSuccess: () => { toast.success('Categoria criada!'); invalidate(); },
     onError: () => toast.error('Erro ao criar categoria'),
   });
@@ -134,7 +135,7 @@ export function useProducts() {
       editMutation.mutateAsync({ type, id, data }),
     createProduct: (data: { name: string; base_price: number; is_available: boolean }) =>
       createProductMutation.mutateAsync(data),
-    createGroup: (data: { name: string; min_choices: number; max_choices: number; is_required: boolean; product_id: string }) =>
+    createGroup: (data: { name: string; min_choices: number; max_choices: number; product_id: string }) =>
       createGroupMutation.mutateAsync(data),
     createComplement: (data: { name: string; extra_price: number; group_id: string; is_available: boolean }) =>
       createComplementMutation.mutateAsync(data),
