@@ -71,7 +71,8 @@ export function useProducts() {
 
   // Criar grupo (agora com product_id)
   const createGroupMutation = useMutation({
-    mutationFn: createComplementGroup,
+    mutationFn: (data: { name: string; min_choices: number; max_choices: number; product_id: string }) =>
+      createComplementGroup(data),
     onSuccess: () => { toast.success('Categoria criada!'); invalidate(); },
     onError: () => toast.error('Erro ao criar categoria'),
   });

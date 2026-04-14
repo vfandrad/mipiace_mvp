@@ -3,21 +3,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   productId: string;
   productName: string;
-  onCreate: (data: { name: string; min_choices: number; max_choices: number; is_required: boolean; product_id: string }) => Promise<unknown>;
+  onCreate: (data: { name: string; min_choices: number; max_choices: number; product_id: string }) => Promise<unknown>;
 }
 
 export const CreateGroupDialog = ({ open, onOpenChange, productId, productName, onCreate }: Props) => {
   const [name, setName] = useState('');
   const [min, setMin] = useState('0');
   const [max, setMax] = useState('3');
-  const [required, setRequired] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
@@ -28,10 +26,9 @@ export const CreateGroupDialog = ({ open, onOpenChange, productId, productName, 
         name: name.trim(),
         min_choices: parseInt(min) || 0,
         max_choices: parseInt(max) || 1,
-        is_required: required,
         product_id: productId,
       });
-      setName(''); setMin('0'); setMax('3'); setRequired(false);
+      setName(''); setMin('0'); setMax('3');
       onOpenChange(false);
     } finally {
       setLoading(false);
@@ -44,13 +41,13 @@ export const CreateGroupDialog = ({ open, onOpenChange, productId, productName, 
         <DialogHeader>
           <DialogTitle>Nova Categoria para "{productName}"</DialogTitle>
           <DialogDescription>
-            Esta categoria será vinculada exclusivamente a este produto. Ex: o grupo "Sabores" de um Gelato é independente do grupo "Sabores" de um Milkshake.
+            Esta categoria pertence exclusivamente a este produto. Ex: "Sabores" do Pote 500ml é independente dos "Sabores" do Pote 1000ml.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label>Nome</Label>
-            <Input value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Coberturas" />
+            <Input value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Sabores, Coberturas" />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -61,10 +58,6 @@ export const CreateGroupDialog = ({ open, onOpenChange, productId, productName, 
               <Label>Máx. Escolhas</Label>
               <Input type="number" value={max} onChange={e => setMax(e.target.value)} />
             </div>
-          </div>
-          <div className="flex items-center justify-between">
-            <Label>Obrigatório</Label>
-            <Switch checked={required} onCheckedChange={setRequired} />
           </div>
         </div>
         <DialogFooter>
