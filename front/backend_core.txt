@@ -1,0 +1,1260 @@
+
+===== C:\Users\victo\mipiace_mvp\back\app\database.py =====
+import os
+from supabase import create_client, Client
+from dotenv import load_dotenv
+
+# Carrega as variáveis do arquivo .env
+load_dotenv()
+
+url: str = os.getenv("SUPABASE_URL")
+key: str = os.getenv("SUPABASE_KEY")
+
+# Trava de segurança caso o .env não seja lido corretamente
+if not url or not key:
+    raise ValueError("⚠️ As credenciais do Supabase não foram encontradas no ambiente.")
+
+supabase: Client = create_client(url, key)
+
+def get_db():
+    return supabase
+
+===== C:\Users\victo\mipiace_mvp\back\app\main.py =====
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.routes import products, orders
+
+app = FastAPI(title="Mi Piace Gelato API")
+
+# Permite que o frontend (Lovable/Vite) na porta 5173 acesse a API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(products.router)
+app.include_router(orders.router)
+
+@app.get("/")
+def health_check():
+    return {"status": "ok", "app": "Mi Piace Backend"}
+
+===== C:\Users\victo\mipiace_mvp\back\app\routes\orders.py =====
+import os
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Request
+from app.database import get_db
+from app.schemas.order import OrderCreate, OrderUpdatePayment
+
+router = APIRouter(prefix="/orders", tags=["Orders"])
+
+# --- 1. WEBHOOK DO N8N (CRIA O PEDIDO) ---
+@router.post("/webhook/n8n")
+async def receive_order(payload: OrderCreate, db=Depends(get_db)):
+    """
+    Salva o pedido e prepara o terreno para o pagamento.
+    """
+    try:
+        end = payload.endereco
+        
+        order_res = db.table("orders").insert({
+            "customer_name": payload.customer_name,
+            "customer_phone": payload.customer_phone,
+            "total_price": payload.total_price,
+            "rua": end.rua if end else None,
+            "numero": end.numero if end else None,
+            "bairro": end.bairro if end else None,
+            "complemento_endereco": end.complemento if end else None,
+            "status": "novo",
+            "payment_status": "pendente", # Já nasce pendente
+            "payment_id": payload.payment_id,
+            "payment_link": payload.payment_link,
+            "payment_method": payload.payment_method
+        }).execute()
+        
+        order_id = order_res.data[0]['id']
+
+        items_to_insert = []
+        for item in payload.items:
+            items_to_insert.append({
+                "order_id": order_id,
+                "product_id": item.product_id,
+                "complement_ids": item.selected_complement_ids,
+                "quantity": item.quantity,
+                "details": item.details
+            })
+
+        if items_to_insert:
+            db.table("order_items").insert(items_to_insert).execute()
+
+        return {"status": "success", "order_id": order_id}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# --- 2. ATUALIZAR DADOS DO PIX (N8N CHAMA APÓS O MP) ---
+@router.patch("/{order_id}/payment-info")
+async def update_payment_info(order_id: str, payload: OrderUpdatePayment, db=Depends(get_db)):
+    """
+    O n8n chama essa rota para injetar o 'Copia e Cola' e o ID da transação no banco
+    para que o lojista veja no Lovable.
+    """
+    try:
+        db.table("orders").update({
+            "payment_id": payload.payment_id,
+            "payment_link": payload.payment_link,
+            "payment_method": payload.payment_method
+        }).eq("id", order_id).execute()
+        
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# --- 3. WEBHOOK DO MERCADO PAGO (CONFIRMA O PIX) ---
+@router.post("/webhook/mercadopago")
+async def mp_webhook(request: Request, db=Depends(get_db)):
+    """
+    Escuta a instituição financeira. Se pago, libera o pedido no Lovable.
+    """
+    data = await request.json()
+    
+    # O Mercado Pago dispara eventos com type ou topic = 'payment'
+    if data.get("type") == "payment" or data.get("topic") == "payment":
+        payment_id = data.get("data", {}).get("id")
+        
+        if not payment_id:
+            return {"status": "ignored"}
+
+        mp_token = os.getenv("MP_ACCESS_TOKEN")
+        if not mp_token:
+            print("🚨 AVISO: MP_ACCESS_TOKEN não configurado no .env")
+            return {"status": "error", "message": "Falta chave de segurança"}
+
+        # Verificação de Segurança (Impede 'Fake Pix')
+        async with httpx.AsyncClient() as client:
+            headers = {"Authorization": f"Bearer {mp_token}"}
+            response = await client.get(f"https://api.mercadopago.com/v1/payments/{payment_id}", headers=headers)
+            
+            if response.status_code == 200:
+                payment_info = response.json()
+                status = payment_info.get("status")
+                external_reference = payment_info.get("external_reference") # É o seu order_id
+
+                # Se o Pix foi pago e existe a referência cruzada
+                if status == "approved" and external_reference:
+                    db.table("orders").update({
+                        "payment_status": "pago",
+                        "status": "preparando" # Automatiza o movimento no Kanban
+                    }).eq("id", external_reference).execute()
+
+    return {"status": "ok"}
+
+@router.get("/")
+async def get_orders_for_kanban(db=Depends(get_db)):
+    """
+    Devolve a lista atualizada para a interface visual.
+    """
+    res = db.table("orders").select("*, order_items(*, products(name))").order("created_at", desc=True).execute()
+    return res.data
+
+from pydantic import BaseModel
+
+class StatusUpdate(BaseModel):
+    status: str
+
+@router.patch("/{order_id}")
+async def update_order_status(order_id: str, payload: StatusUpdate, db=Depends(get_db)):
+    """
+    ESSA ROTA ESTAVA FALTANDO. 
+    É ela que o Kanban chama para mover o card de coluna.
+    """
+    try:
+        res = db.table("orders").update({
+            "status": payload.status,
+            "updated_at": "now()" # Vital para o cronômetro do Kanban
+        }).eq("id", order_id).execute()
+        
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Pedido não encontrado")
+            
+        return res.data[0]
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+===== C:\Users\victo\mipiace_mvp\back\app\routes\products.py =====
+from fastapi import APIRouter, Depends, HTTPException
+from app.database import get_db
+
+router = APIRouter(prefix="/products", tags=["Inventory"])
+
+# --- OUTPUT PARA O N8N (CARDÁPIO GENÉRICO) ---
+# No products.py, atualize o menu-summary:
+@router.get("/menu-summary")
+async def get_menu_summary(db=Depends(get_db)):
+    try:
+        # Buscamos os dados
+        p = db.table("products").select("id, name, base_price").eq("is_available", True).execute()
+        g = db.table("complement_groups").select("id, product_id, name, min_choices, max_choices, is_required").execute()
+        c = db.table("complements").select("id, group_id, name, extra_price").eq("is_available", True).execute()
+        
+        return {
+            "products": p.data,
+            "groups": g.data,
+            "complements": c.data
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- GESTÃO ADMIN (PARA O LOVABLE) ---
+@router.get("/")
+async def list_inventory(db=Depends(get_db)):
+    """Lista tudo para o Dashboard"""
+    p = db.table("products").select("*").execute()
+    g = db.table("complement_groups").select("*").execute()
+    c = db.table("complements").select("*").execute()
+    return {"products": p.data, "groups": g.data, "complements": c.data}
+
+@router.patch("/{type}/{id}")
+async def update_item(type: str, id: str, data: dict, db=Depends(get_db)):
+    """
+    Rota genérica para atualizar qualquer tabela (products ou complements).
+    Ex: /products/products/{uuid} ou /products/complements/{uuid}
+    """
+    table = "products" if type == "product" else "complements"
+    res = db.table(table).update(data).eq("id", id).execute()
+    return res.data[0]
+
+# --- DELETAR ITENS (Necessário para o CRUD do Lovable) ---
+
+@router.delete("/{type}/{id}")
+async def delete_item(type: str, id: str, db=Depends(get_db)):
+    # Adicionamos 'complement_group' no mapeamento de tabelas
+    if type == "product":
+        table = "products"
+    elif type == "complement":
+        table = "complements"
+    elif type == "complement_group": # ADICIONADO: Para apagar a categoria
+        table = "complement_groups"
+    else:
+        raise HTTPException(status_code=400, detail="Tipo inválido")
+
+    try:
+        # Se o banco estiver com ON DELETE CASCADE (como expliquei antes),
+        # apagar o grupo aqui vai limpar automaticamente os sabores dentro dele.
+        res = db.table(table).delete().eq("id", id).execute()
+        return {"status": "success", "message": f"{type} removido com sucesso"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erro ao deletar: {str(e)}")
+
+# --- CRIAR ITENS (Necessário para os botões "+" do Lovable) ---
+
+@router.post("/{type}")
+async def create_item(type: str, data: dict, db=Depends(get_db)):
+    """
+    Cria um novo produto ou complemento.
+    """
+    table = "products" if type == "product" else "complements"
+    try:
+        res = db.table(table).insert(data).execute()
+        return res.data[0]
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erro ao criar: {str(e)}")
+
+===== C:\Users\victo\mipiace_mvp\back\app\schemas\order.py =====
+from pydantic import BaseModel
+from typing import List, Optional
+
+class AddressSchema(BaseModel):
+    rua: Optional[str] = None
+    numero: Optional[str] = None
+    bairro: Optional[str] = None
+    complemento: Optional[str] = None
+
+class OrderItemSchema(BaseModel):
+    product_id: str
+    selected_complement_ids: List[str] = []
+    quantity: int = 1
+    details: Optional[str] = None
+
+class OrderCreate(BaseModel):
+    customer_name: str
+    customer_phone: str
+    total_price: float
+    chat_id: Optional[str] = None
+    endereco: Optional[AddressSchema] = None
+    items: List[OrderItemSchema]
+    payment_id: Optional[str] = None
+    payment_link: Optional[str] = None
+    payment_method: Optional[str] = "pix"
+
+class OrderUpdateStatus(BaseModel):
+    status: Optional[str] = None
+    payment_status: Optional[str] = None
+
+# Schema para o n8n salvar os dados do Pix após gerá-lo
+class OrderUpdatePayment(BaseModel):
+    payment_id: str
+    payment_link: str
+    payment_method: str = "pix"
+
+===== C:\Users\victo\mipiace_mvp\back\app\schemas\product.py =====
+from pydantic import BaseModel
+from typing import Optional
+
+class CategoryCreate(BaseModel):
+    name: str
+    requires_price: bool = True
+
+class ProductCreate(BaseModel):
+    name: str
+    category_id: str
+    price: Optional[float] = None
+    is_available: bool = True
+
+===== C:\Users\victo\mipiace_mvp\back\app\services\order_service.py =====
+def process_n8n_order(order_data: dict, db):
+    # 1. Salva o Pedido (Tabela orders)
+    end = order_data.get("endereco", {})
+    order_res = db.table("orders").insert({
+        "customer_name": order_data.get("customer_name"),
+        "customer_phone": order_data.get("customer_phone"),
+        "total_price": order_data.get("total_price"),
+        "rua": end.get("rua"),
+        "numero": end.get("numero"),
+        "bairro": end.get("bairro"),
+        "complemento_endereco": end.get("complemento"),
+        "status": "novo"
+    }).execute()
+
+    order_id = order_res.data[0]['id']
+
+    # 2. Salva os Itens (Tabela order_items)
+    items_to_insert = []
+    for item in order_data.get("items", []):
+        items_to_insert.append({
+            "order_id": order_id,
+            "product_id": item.get("product_id"),
+            "quantity": item.get("quantity", 1),
+            "complement_ids": item.get("selected_complement_ids", []), # JSONB aqui
+            "details": item.get("details")
+        })
+
+    if items_to_insert:
+        db.table("order_items").insert(items_to_insert).execute()
+
+    return order_res.data[0]
+
+===== C:\Users\victo\mipiace_mvp\front\src\hooks\use-mobile.tsx =====
+import * as React from "react";
+
+const MOBILE_BREAKPOINT = 768;
+
+export function useIsMobile() {
+  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined);
+
+  React.useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
+    const onChange = () => {
+      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    };
+    mql.addEventListener("change", onChange);
+    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+
+  return !!isMobile;
+}
+
+
+===== C:\Users\victo\mipiace_mvp\front\src\hooks\use-orders.ts =====
+/**
+ * Hook para buscar e atualizar pedidos via API
+ * Usa React Query para cache, refetch automático e mutations
+ */
+
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { fetchOrders, updateOrderStatus, ApiOrder } from '@/lib/api';
+import { Order, OrderStatus, PaymentStatus } from '@/types/order';
+
+// Converte o formato da API (snake_case) para o formato do frontend (camelCase)
+function toOrder(api: ApiOrder): Order {
+  return {
+    id: api.id,
+    orderNumber: api.order_number,
+    status: api.status as OrderStatus,
+    paymentStatus: api.payment_status as PaymentStatus,
+    items: api.items,
+    total: api.total,
+    customerName: api.customer_name,
+    createdAt: new Date(api.created_at),
+    updatedAt: new Date(api.updated_at),
+  };
+}
+
+export function useOrders() {
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
+    queryKey: ['orders'],
+    queryFn: fetchOrders,
+    select: (data) => data.map(toOrder),
+    refetchInterval: 15000, // Atualiza a cada 15s para ver novos pedidos
+  });
+
+  const mutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: OrderStatus }) =>
+      updateOrderStatus(id, status),
+    // Atualização otimista: muda o status localmente antes da resposta da API
+    onMutate: async ({ id, status }) => {
+      await queryClient.cancelQueries({ queryKey: ['orders'] });
+      const previous = queryClient.getQueryData<ApiOrder[]>(['orders']);
+      queryClient.setQueryData<ApiOrder[]>(['orders'], (old) =>
+        old?.map((o) => (o.id === id ? { ...o, status, updated_at: new Date().toISOString() } : o))
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(['orders'], context.previous);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+    },
+  });
+
+  return {
+    orders: query.data ?? [],
+    isLoading: query.isLoading,
+    error: query.error,
+    changeStatus: (id: string, status: OrderStatus) => mutation.mutate({ id, status }),
+  };
+}
+
+
+===== C:\Users\victo\mipiace_mvp\front\src\hooks\use-products.ts =====
+/**
+ * Hook para CRUD de produtos via API
+ * Usa React Query para cache e mutations
+ */
+
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { fetchProducts, createProduct, deleteProduct, ApiProduct } from '@/lib/api';
+
+export interface Product {
+  id: string;
+  nome: string;
+  preco: number;
+  disponivel: boolean;
+}
+
+// Converte API (inglês) → frontend (português)
+function toProduct(api: ApiProduct): Product {
+  return { id: api.id, nome: api.name, preco: api.price, disponivel: api.is_available };
+}
+
+export function useProducts() {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['products'] });
+
+  const query = useQuery({
+    queryKey: ['products'],
+    queryFn: fetchProducts,
+    select: (data) => data.map(toProduct),
+  });
+
+  const addMutation = useMutation({
+    mutationFn: (data: { name: string; price: number; is_available: boolean }) => createProduct(data),
+    onSuccess: invalidate,
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (id: string) => deleteProduct(id),
+    onSuccess: invalidate,
+  });
+
+  return {
+    products: query.data ?? [],
+    isLoading: query.isLoading,
+    error: query.error,
+    addProduct: (nome: string, preco: number, disponivel: boolean) =>
+      addMutation.mutateAsync({ name: nome, price: preco, is_available: disponivel }),
+    removeProduct: (id: string) => removeMutation.mutateAsync(id),
+    isSaving: addMutation.isPending || removeMutation.isPending,
+  };
+}
+
+
+===== C:\Users\victo\mipiace_mvp\front\src\hooks\use-toast.ts =====
+import * as React from "react";
+
+import type { ToastActionElement, ToastProps } from "@/components/ui/toast";
+
+const TOAST_LIMIT = 1;
+const TOAST_REMOVE_DELAY = 1000000;
+
+type ToasterToast = ToastProps & {
+  id: string;
+  title?: React.ReactNode;
+  description?: React.ReactNode;
+  action?: ToastActionElement;
+};
+
+const actionTypes = {
+  ADD_TOAST: "ADD_TOAST",
+  UPDATE_TOAST: "UPDATE_TOAST",
+  DISMISS_TOAST: "DISMISS_TOAST",
+  REMOVE_TOAST: "REMOVE_TOAST",
+} as const;
+
+let count = 0;
+
+function genId() {
+  count = (count + 1) % Number.MAX_SAFE_INTEGER;
+  return count.toString();
+}
+
+type ActionType = typeof actionTypes;
+
+type Action =
+  | {
+      type: ActionType["ADD_TOAST"];
+      toast: ToasterToast;
+    }
+  | {
+      type: ActionType["UPDATE_TOAST"];
+      toast: Partial<ToasterToast>;
+    }
+  | {
+      type: ActionType["DISMISS_TOAST"];
+      toastId?: ToasterToast["id"];
+    }
+  | {
+      type: ActionType["REMOVE_TOAST"];
+      toastId?: ToasterToast["id"];
+    };
+
+interface State {
+  toasts: ToasterToast[];
+}
+
+const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+
+const addToRemoveQueue = (toastId: string) => {
+  if (toastTimeouts.has(toastId)) {
+    return;
+  }
+
+  const timeout = setTimeout(() => {
+    toastTimeouts.delete(toastId);
+    dispatch({
+      type: "REMOVE_TOAST",
+      toastId: toastId,
+    });
+  }, TOAST_REMOVE_DELAY);
+
+  toastTimeouts.set(toastId, timeout);
+};
+
+export const reducer = (state: State, action: Action): State => {
+  switch (action.type) {
+    case "ADD_TOAST":
+      return {
+        ...state,
+        toasts: [action.toast, ...state.toasts].slice(0, TOAST_LIMIT),
+      };
+
+    case "UPDATE_TOAST":
+      return {
+        ...state,
+        toasts: state.toasts.map((t) => (t.id === action.toast.id ? { ...t, ...action.toast } : t)),
+      };
+
+    case "DISMISS_TOAST": {
+      const { toastId } = action;
+
+      // ! Side effects ! - This could be extracted into a dismissToast() action,
+      // but I'll keep it here for simplicity
+      if (toastId) {
+        addToRemoveQueue(toastId);
+      } else {
+        state.toasts.forEach((toast) => {
+          addToRemoveQueue(toast.id);
+        });
+      }
+
+      return {
+        ...state,
+        toasts: state.toasts.map((t) =>
+          t.id === toastId || toastId === undefined
+            ? {
+                ...t,
+                open: false,
+              }
+            : t,
+        ),
+      };
+    }
+    case "REMOVE_TOAST":
+      if (action.toastId === undefined) {
+        return {
+          ...state,
+          toasts: [],
+        };
+      }
+      return {
+        ...state,
+        toasts: state.toasts.filter((t) => t.id !== action.toastId),
+      };
+  }
+};
+
+const listeners: Array<(state: State) => void> = [];
+
+let memoryState: State = { toasts: [] };
+
+function dispatch(action: Action) {
+  memoryState = reducer(memoryState, action);
+  listeners.forEach((listener) => {
+    listener(memoryState);
+  });
+}
+
+type Toast = Omit<ToasterToast, "id">;
+
+function toast({ ...props }: Toast) {
+  const id = genId();
+
+  const update = (props: ToasterToast) =>
+    dispatch({
+      type: "UPDATE_TOAST",
+      toast: { ...props, id },
+    });
+  const dismiss = () => dispatch({ type: "DISMISS_TOAST", toastId: id });
+
+  dispatch({
+    type: "ADD_TOAST",
+    toast: {
+      ...props,
+      id,
+      open: true,
+      onOpenChange: (open) => {
+        if (!open) dismiss();
+      },
+    },
+  });
+
+  return {
+    id: id,
+    dismiss,
+    update,
+  };
+}
+
+function useToast() {
+  const [state, setState] = React.useState<State>(memoryState);
+
+  React.useEffect(() => {
+    listeners.push(setState);
+    return () => {
+      const index = listeners.indexOf(setState);
+      if (index > -1) {
+        listeners.splice(index, 1);
+      }
+    };
+  }, [state]);
+
+  return {
+    ...state,
+    toast,
+    dismiss: (toastId?: string) => dispatch({ type: "DISMISS_TOAST", toastId }),
+  };
+}
+
+export { useToast, toast };
+
+
+===== C:\Users\victo\mipiace_mvp\front\src\lib\api.ts =====
+/**
+ * Serviço de comunicação com a API backend (api.vfandrade.com)
+ * Centraliza todas as chamadas HTTP do projeto
+ */
+
+const BASE_URL = 'https://api.vfandrade.com';
+
+// Helper genérico para fetch com tratamento de erro
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+  });
+  if (!res.ok) throw new Error(`Erro ${res.status}: ${res.statusText}`);
+  return res.json();
+}
+
+// ========================================
+// Pedidos (Orders)
+// ========================================
+
+export interface ApiOrderItem {
+  id: string;
+  name: string;
+  quantity: number;
+  flavors: string[];
+  accompaniments?: string[];
+  price: number;
+}
+
+export interface ApiOrder {
+  id: string;
+  order_number: number;
+  status: string;
+  payment_status: string;
+  items: ApiOrderItem[];
+  total: number;
+  customer_name?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export function fetchOrders(): Promise<ApiOrder[]> {
+  return request<ApiOrder[]>('/orders/');
+}
+
+export function updateOrderStatus(id: string, status: string): Promise<ApiOrder> {
+  return request<ApiOrder>(`/orders/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}
+
+// ========================================
+// Produtos (Products)
+// ========================================
+
+export interface ApiProduct {
+  id: string;
+  name: string;
+  price: number;
+  is_available: boolean;
+}
+
+export function fetchProducts(): Promise<ApiProduct[]> {
+  return request<ApiProduct[]>('/products/');
+}
+
+export function createProduct(data: { name: string; price: number; is_available: boolean }): Promise<ApiProduct> {
+  return request<ApiProduct>('/products/', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function deleteProduct(id: string): Promise<void> {
+  return request<void>(`/products/${id}`, { method: 'DELETE' });
+}
+
+
+===== C:\Users\victo\mipiace_mvp\front\src\lib\mock-data.ts =====
+/**
+ * Dados de exemplo (mock) para desenvolvimento
+ * Em produção, esses dados viriam de uma API/banco de dados
+ */
+
+import { 
+  Order, 
+  SalesData, 
+  ProductSalesData, 
+  HourlySalesData 
+} from '@/types/order';
+
+// ========================================
+// Pedidos de exemplo para o Kanban
+// ========================================
+export const mockOrders: Order[] = [
+  {
+    id: '1',
+    orderNumber: 1001,
+    status: 'novo',
+    paymentStatus: 'pago',
+    items: [
+      { id: '1a', name: 'Pote 500ml', quantity: 1, flavors: ['Pistache', 'Doce de Leite'], accompaniments: ['Cascão Artesanal'], price: 50.00 },
+      { id: '1b', name: 'Pote 240ml', quantity: 2, flavors: ['Romeu e Julieta'], accompaniments: [], price: 30.00 },
+    ],
+    total: 116.00,
+    customerName: 'João Silva',
+    createdAt: new Date(Date.now() - 5 * 60 * 1000),
+    updatedAt: new Date(Date.now() - 5 * 60 * 1000),
+  },
+  {
+    id: '2',
+    orderNumber: 1002,
+    status: 'novo',
+    paymentStatus: 'pendente',
+    items: [
+      { id: '2a', name: 'Pote 500ml', quantity: 1, flavors: ['Ninho com Nutella', 'Café Robusta'], accompaniments: ['Cascão Artesanal', 'Cascão Artesanal'], price: 50.00 },
+    ],
+    total: 56.00,
+    customerName: 'Maria Santos',
+    createdAt: new Date(Date.now() - 3 * 60 * 1000),
+    updatedAt: new Date(Date.now() - 3 * 60 * 1000),
+  },
+  {
+    id: '3',
+    orderNumber: 1003,
+    status: 'producao',
+    paymentStatus: 'pago',
+    items: [
+      { id: '3a', name: 'Pote 500ml', quantity: 2, flavors: ['Limão Siciliano', 'Morango Zero Lactose'], accompaniments: [], price: 50.00 },
+      { id: '3b', name: 'Pote 240ml', quantity: 1, flavors: ['Pavlova'], accompaniments: ['Cascão Artesanal'], price: 30.00 },
+    ],
+    total: 133.00,
+    customerName: 'Pedro Costa',
+    createdAt: new Date(Date.now() - 15 * 60 * 1000),
+    updatedAt: new Date(Date.now() - 10 * 60 * 1000),
+  },
+  {
+    id: '4',
+    orderNumber: 1004,
+    status: 'producao',
+    paymentStatus: 'pago',
+    items: [
+      { id: '4a', name: 'Pote 240ml', quantity: 3, flavors: ['Fior di Latte Zero Açúcar', 'Iogurte com Amarena'], accompaniments: [], price: 30.00 },
+    ],
+    total: 90.00,
+    customerName: 'Ana Lima',
+    createdAt: new Date(Date.now() - 20 * 60 * 1000),
+    updatedAt: new Date(Date.now() - 12 * 60 * 1000),
+  },
+  {
+    id: '5',
+    orderNumber: 1005,
+    status: 'pronto',
+    paymentStatus: 'pago',
+    items: [
+      { id: '5a', name: 'Pote 500ml', quantity: 2, flavors: ['Cupuaçu', 'Coco Branco'], accompaniments: ['Cascão Artesanal'], price: 50.00 },
+    ],
+    total: 103.00,
+    customerName: 'Carlos Mendes',
+    createdAt: new Date(Date.now() - 30 * 60 * 1000),
+    updatedAt: new Date(Date.now() - 5 * 60 * 1000),
+  },
+  {
+    id: '6',
+    orderNumber: 1006,
+    status: 'pronto',
+    paymentStatus: 'pendente',
+    items: [
+      { id: '6a', name: 'Pote 500ml', quantity: 1, flavors: ['Paçoquinha', 'Chocolate Zero Açúcar'], accompaniments: [], price: 50.00 },
+    ],
+    total: 50.00,
+    customerName: 'Fernanda Alves',
+    createdAt: new Date(Date.now() - 25 * 60 * 1000),
+    updatedAt: new Date(Date.now() - 3 * 60 * 1000),
+  },
+  {
+    id: '7',
+    orderNumber: 1000,
+    status: 'entregue',
+    paymentStatus: 'pago',
+    items: [
+      { id: '7a', name: 'Pote 240ml', quantity: 2, flavors: ['Maracujá', 'Frutas Vermelhas Zero Lactose'], accompaniments: ['Cascão Artesanal'], price: 30.00 },
+    ],
+    total: 63.00,
+    customerName: 'Roberto Dias',
+    createdAt: new Date(Date.now() - 60 * 60 * 1000),
+    updatedAt: new Date(Date.now() - 45 * 60 * 1000),
+  },
+];
+
+// ========================================
+// Dados para gráficos do Dashboard
+// ========================================
+
+export const mockSalesData: SalesData[] = [
+  { date: '2024-01-20', total: 2450.00, orders: 52 },
+  { date: '2024-01-21', total: 2880.00, orders: 61 },
+  { date: '2024-01-22', total: 2120.00, orders: 45 },
+  { date: '2024-01-23', total: 3150.00, orders: 68 },
+  { date: '2024-01-24', total: 3590.00, orders: 76 },
+  { date: '2024-01-25', total: 4100.00, orders: 89 },
+  { date: '2024-01-26', total: 3850.00, orders: 82 },
+];
+
+export const mockProductSales: ProductSalesData[] = [
+  { name: 'Pote 500ml', sales: 245, revenue: 12250 },
+  { name: 'Pote 240ml', sales: 189, revenue: 5670 },
+  { name: 'Cascão Artesanal', sales: 312, revenue: 936 },
+];
+
+export const mockHourlySales: HourlySalesData[] = [
+  { hour: '10h', orders: 8, revenue: 280 },
+  { hour: '11h', orders: 15, revenue: 540 },
+  { hour: '12h', orders: 28, revenue: 1020 },
+  { hour: '13h', orders: 35, revenue: 1280 },
+  { hour: '14h', orders: 22, revenue: 790 },
+  { hour: '15h', orders: 18, revenue: 640 },
+  { hour: '16h', orders: 25, revenue: 890 },
+  { hour: '17h', orders: 32, revenue: 1160 },
+  { hour: '18h', orders: 40, revenue: 1450 },
+  { hour: '19h', orders: 38, revenue: 1380 },
+  { hour: '20h', orders: 28, revenue: 1020 },
+  { hour: '21h', orders: 15, revenue: 540 },
+];
+
+// ========================================
+// Funções utilitárias para KPIs
+// ========================================
+
+/**
+ * Calcula os indicadores principais do dashboard
+ * Usa os dados mock de vendas para gerar métricas
+ */
+export function calculateKPIs() {
+  const today = mockSalesData[mockSalesData.length - 1];
+  const yesterday = mockSalesData[mockSalesData.length - 2];
+  
+  const weekTotal = mockSalesData.reduce((acc, day) => acc + day.total, 0);
+  const weekOrders = mockSalesData.reduce((acc, day) => acc + day.orders, 0);
+  
+  const ticketMedio = weekTotal / weekOrders;
+  const changePercent = ((today.total - yesterday.total) / yesterday.total) * 100;
+  
+  return {
+    totalHoje: today.total,
+    totalSemana: weekTotal,
+    ticketMedio,
+    pedidosHoje: today.orders,
+    pedidosSemana: weekOrders,
+    changePercent,
+  };
+}
+
+
+===== C:\Users\victo\mipiace_mvp\front\src\lib\utils.ts =====
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+
+===== C:\Users\victo\mipiace_mvp\front\src\pages\Admin.tsx =====
+/**
+ * Dashboard (Admin) — KPIs, gráficos e pedidos recentes
+ * Dados de pedidos vêm da API; dados de vendas continuam mock (sem endpoint de dashboard na API)
+ */
+
+import { Header } from '@/components/layout/Header';
+import { KPICard } from '@/components/dashboard/KPICard';
+import { SalesChart } from '@/components/dashboard/SalesChart';
+import { ProductsChart } from '@/components/dashboard/ProductsChart';
+import { HourlyChart } from '@/components/dashboard/HourlyChart';
+import { DateFilter } from '@/components/dashboard/DateFilter';
+import { RecentOrders } from '@/components/dashboard/RecentOrders';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useOrders } from '@/hooks/use-orders';
+import { mockSalesData, mockProductSales, mockHourlySales, calculateKPIs } from '@/lib/mock-data';
+import { DollarSign, ShoppingCart, TrendingUp, Package } from 'lucide-react';
+
+const Admin = () => {
+  const { orders, isLoading } = useOrders();
+  const kpis = calculateKPIs();
+
+  // Conta pedidos por status usando dados reais da API
+  const statusCount = {
+    novo: orders.filter(o => o.status === 'novo').length,
+    producao: orders.filter(o => o.status === 'producao').length,
+    pronto: orders.filter(o => o.status === 'pronto').length,
+    entregue: orders.filter(o => o.status === 'entregue').length,
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Header />
+      <main className="container py-6 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+            <p className="text-muted-foreground">Acompanhe o desempenho da sua gelateria</p>
+          </div>
+          <DateFilter />
+        </div>
+
+        {/* KPIs */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <KPICard title="Vendas Hoje" value={kpis.totalHoje} valuePrefix="R$ " change={kpis.changePercent} changeLabel="vs ontem" icon={<DollarSign className="h-5 w-5 text-muted-foreground" />} />
+          <KPICard title="Pedidos Hoje" value={kpis.pedidosHoje} change={8.5} changeLabel="vs ontem" icon={<ShoppingCart className="h-5 w-5 text-muted-foreground" />} />
+          <KPICard title="Ticket Médio" value={kpis.ticketMedio.toFixed(2)} valuePrefix="R$ " change={3.2} changeLabel="vs semana passada" icon={<TrendingUp className="h-5 w-5 text-muted-foreground" />} />
+          <KPICard title="Vendas Semana" value={kpis.totalSemana} valuePrefix="R$ " change={12.4} changeLabel="vs semana passada" icon={<Package className="h-5 w-5 text-muted-foreground" />} />
+        </div>
+
+        {/* Gráficos — empilham em mobile, 2 colunas em desktop */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <SalesChart data={mockSalesData} />
+          <ProductsChart data={mockProductSales} />
+          <HourlyChart data={mockHourlySales} />
+          <div className="kpi-card">
+            <h3 className="font-semibold mb-4 text-sm sm:text-base">Status de Produção</h3>
+            {isLoading ? (
+              <div className="grid grid-cols-2 gap-3">
+                {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-20 rounded-lg" />)}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  { key: 'novo', label: 'Novos', bg: 'bg-status-new-bg', text: 'text-status-new' },
+                  { key: 'producao', label: 'Em Produção', bg: 'bg-status-production-bg', text: 'text-status-production' },
+                  { key: 'pronto', label: 'Prontos', bg: 'bg-status-ready-bg', text: 'text-status-ready' },
+                  { key: 'entregue', label: 'Entregues', bg: 'bg-status-delivered-bg', text: 'text-status-delivered' },
+                ] as const).map(s => (
+                  <div key={s.key} className={`p-3 sm:p-4 rounded-lg ${s.bg}`}>
+                    <p className={`text-2xl sm:text-3xl font-bold ${s.text}`}>{statusCount[s.key]}</p>
+                    <p className={`text-xs sm:text-sm ${s.text}/80 mt-1`}>{s.label}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {isLoading ? (
+          <Skeleton className="h-48 rounded-lg" />
+        ) : (
+          <RecentOrders orders={orders} />
+        )}
+      </main>
+    </div>
+  );
+};
+
+export default Admin;
+
+
+===== C:\Users\victo\mipiace_mvp\front\src\pages\Loja.tsx =====
+/**
+ * Página de Produção — quadro Kanban para gerenciar pedidos
+ */
+
+import { Header } from '@/components/layout/Header';
+import { KanbanColumn } from '@/components/production/KanbanColumn';
+import { OrderStatus } from '@/types/order';
+import { useOrders } from '@/hooks/use-orders';
+import { useToast } from '@/hooks/use-toast';
+import { Skeleton } from '@/components/ui/skeleton';
+
+const STATUS_LABELS: Record<OrderStatus, string> = {
+  novo: 'Novo',
+  producao: 'Em Produção',
+  pronto: 'Pronto',
+  entregue: 'Entregue',
+};
+
+const KANBAN_STATUSES: OrderStatus[] = ['novo', 'producao', 'pronto', 'entregue'];
+
+const Loja = () => {
+  const { orders, isLoading, changeStatus } = useOrders();
+  const { toast } = useToast();
+
+  const handleStatusChange = (orderId: string, newStatus: OrderStatus) => {
+    changeStatus(orderId, newStatus);
+    toast({ title: 'Status atualizado', description: `Pedido movido para ${STATUS_LABELS[newStatus]}` });
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Header />
+      <main className="container py-6">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold tracking-tight">Produção</h1>
+          <p className="text-muted-foreground">Gerencie o fluxo de pedidos</p>
+        </div>
+
+        {isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            {KANBAN_STATUSES.map(s => (
+              <Skeleton key={s} className="h-64 rounded-lg" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            {KANBAN_STATUSES.map(status => (
+              <KanbanColumn
+                key={status}
+                status={status}
+                orders={orders.filter(o => o.status === status)}
+                onStatusChange={handleStatusChange}
+              />
+            ))}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+};
+
+export default Loja;
+
+
+===== C:\Users\victo\mipiace_mvp\front\src\pages\NotFound.tsx =====
+/**
+ * Página 404 — exibida quando a rota não existe
+ */
+
+const NotFound = () => (
+  <div className="flex min-h-screen items-center justify-center bg-muted">
+    <div className="text-center">
+      <h1 className="mb-4 text-4xl font-bold">404</h1>
+      <p className="mb-4 text-xl text-muted-foreground">Página não encontrada</p>
+      <a href="/" className="text-primary underline hover:text-primary/90">Voltar ao início</a>
+    </div>
+  </div>
+);
+
+export default NotFound;
+
+
+===== C:\Users\victo\mipiace_mvp\front\src\pages\Produtos.tsx =====
+/**
+ * Página de Produtos — CRUD para gerenciar o cardápio
+ * Dados vêm da API real via useProducts
+ */
+
+import { useState } from 'react';
+import { Header } from '@/components/layout/Header';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Plus, Trash2 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { useProducts, Product } from '@/hooks/use-products';
+
+const EMPTY_FORM = { nome: '', preco: '', disponivel: true };
+
+const Produtos = () => {
+  const { products, isLoading, addProduct, removeProduct, isSaving } = useProducts();
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const { toast } = useToast();
+
+  const handleSave = async () => {
+    if (!form.nome.trim() || !form.preco) {
+      toast({ title: 'Preencha todos os campos', variant: 'destructive' });
+      return;
+    }
+    const preco = parseFloat(form.preco);
+    if (isNaN(preco) || preco <= 0) {
+      toast({ title: 'Preço inválido', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      await addProduct(form.nome.trim(), preco, form.disponivel);
+      toast({ title: 'Produto cadastrado' });
+      setDialogOpen(false);
+      setForm(EMPTY_FORM);
+    } catch {
+      toast({ title: 'Erro ao salvar produto', variant: 'destructive' });
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await removeProduct(id);
+      toast({ title: 'Produto removido' });
+    } catch {
+      toast({ title: 'Erro ao remover produto', variant: 'destructive' });
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Header />
+      <main className="container py-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Produtos</h1>
+            <p className="text-muted-foreground">Gerencie o cardápio da gelateria</p>
+          </div>
+
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button onClick={() => { setForm(EMPTY_FORM); setDialogOpen(true); }}>
+                <Plus className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Novo Produto</span>
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Novo Produto</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-2">
+                <div className="space-y-2">
+                  <Label htmlFor="nome">Nome</Label>
+                  <Input id="nome" value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} placeholder="Ex: Gelato Pistache" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="preco">Preço (R$)</Label>
+                  <Input id="preco" type="number" step="0.01" min="0" value={form.preco} onChange={e => setForm(f => ({ ...f, preco: e.target.value }))} placeholder="0.00" />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="disponivel">Disponível para venda</Label>
+                  <Switch id="disponivel" checked={form.disponivel} onCheckedChange={val => setForm(f => ({ ...f, disponivel: val }))} />
+                </div>
+                <Button onClick={handleSave} className="w-full" disabled={isSaving}>
+                  {isSaving ? 'Salvando...' : 'Cadastrar Produto'}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        <div className="kpi-card">
+          {isLoading ? (
+            <div className="space-y-3 p-4">
+              {[1, 2, 3].map(i => <Skeleton key={i} className="h-10 w-full" />)}
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nome</TableHead>
+                  <TableHead className="text-right">Preço</TableHead>
+                  <TableHead className="text-center">Disponível</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {products.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">Nenhum produto cadastrado</TableCell>
+                  </TableRow>
+                ) : (
+                  products.map(p => (
+                    <TableRow key={p.id}>
+                      <TableCell className="font-medium">{p.nome}</TableCell>
+                      <TableCell className="text-right">R$ {p.preco.toFixed(2)}</TableCell>
+                      <TableCell className="text-center">
+                        <span className={`inline-block w-3 h-3 rounded-full ${p.disponivel ? 'bg-[hsl(var(--status-ready))]' : 'bg-[hsl(var(--destructive))]'}`} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(p.id)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+};
+
+export default Produtos;
+
