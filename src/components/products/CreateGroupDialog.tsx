@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,10 +8,12 @@ import { Switch } from '@/components/ui/switch';
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreate: (data: { name: string; min_choices: number; max_choices: number; is_required: boolean }) => Promise<unknown>;
+  productId: string;
+  productName: string;
+  onCreate: (data: { name: string; min_choices: number; max_choices: number; is_required: boolean; product_id: string }) => Promise<unknown>;
 }
 
-export const CreateGroupDialog = ({ open, onOpenChange, onCreate }: Props) => {
+export const CreateGroupDialog = ({ open, onOpenChange, productId, productName, onCreate }: Props) => {
   const [name, setName] = useState('');
   const [min, setMin] = useState('0');
   const [max, setMax] = useState('3');
@@ -22,7 +24,13 @@ export const CreateGroupDialog = ({ open, onOpenChange, onCreate }: Props) => {
     if (!name.trim()) return;
     setLoading(true);
     try {
-      await onCreate({ name: name.trim(), min_choices: parseInt(min) || 0, max_choices: parseInt(max) || 1, is_required: required });
+      await onCreate({
+        name: name.trim(),
+        min_choices: parseInt(min) || 0,
+        max_choices: parseInt(max) || 1,
+        is_required: required,
+        product_id: productId,
+      });
       setName(''); setMin('0'); setMax('3'); setRequired(false);
       onOpenChange(false);
     } finally {
@@ -34,7 +42,10 @@ export const CreateGroupDialog = ({ open, onOpenChange, onCreate }: Props) => {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Nova Categoria / Grupo</DialogTitle>
+          <DialogTitle>Nova Categoria para "{productName}"</DialogTitle>
+          <DialogDescription>
+            Esta categoria será vinculada exclusivamente a este produto. Ex: o grupo "Sabores" de um Gelato é independente do grupo "Sabores" de um Milkshake.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
