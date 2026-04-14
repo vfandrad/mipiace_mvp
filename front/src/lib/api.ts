@@ -3,6 +3,8 @@
  * Centraliza todas as chamadas HTTP do projeto
  */
 
+import { InventoryResponse, ApiOrder, ApiProduct } from '@/types/order';
+
 const BASE_URL = 'https://api.vfandrade.com';
 
 // Helper genérico para fetch com tratamento de erro
@@ -16,29 +18,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 // ========================================
-// Pedidos (Orders)
+// Pedidos
 // ========================================
-
-export interface ApiOrderItem {
-  id: string;
-  name: string;
-  quantity: number;
-  flavors: string[];
-  accompaniments?: string[];
-  price: number;
-}
-
-export interface ApiOrder {
-  id: string;
-  order_number: number;
-  status: string;
-  payment_status: string;
-  items: ApiOrderItem[];
-  total: number;
-  customer_name?: string;
-  created_at: string;
-  updated_at: string;
-}
 
 export function fetchOrders(): Promise<ApiOrder[]> {
   return request<ApiOrder[]>('/orders/');
@@ -52,24 +33,53 @@ export function updateOrderStatus(id: string, status: string): Promise<ApiOrder>
 }
 
 // ========================================
-// Produtos (Products)
+// Inventário (Produtos + Grupos + Complementos)
 // ========================================
 
-export interface ApiProduct {
-  id: string;
-  name: string;
-  price: number;
-  is_available: boolean;
+export function fetchInventory(): Promise<InventoryResponse> {
+  return request<InventoryResponse>('/products/');
 }
 
-export function fetchProducts(): Promise<ApiProduct[]> {
-  return request<ApiProduct[]>('/products/');
+/**
+ * Atualiza disponibilidade ou preço de um produto/complemento
+ * type: 'product' | 'complement'
+ */
+export function patchInventoryItem(
+  type: 'product' | 'complement',
+  id: string,
+  data: Partial<{ is_available: boolean; base_price: number; extra_price: number; name: string }>
+): Promise<unknown> {
+  return request(`/products/${type}/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
 }
 
-export function createProduct(data: { name: string; price: number; is_available: boolean }): Promise<ApiProduct> {
-  return request<ApiProduct>('/products/', { method: 'POST', body: JSON.stringify(data) });
+// POST novo produto
+export function createProduct(data: { name: string; base_price: number; is_available: boolean }): Promise<ApiProduct> {
+  return request<ApiProduct>('/products/product', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 }
 
-export function deleteProduct(id: string): Promise<void> {
-  return request<void>(`/products/${id}`, { method: 'DELETE' });
+// POST novo grupo de complementos
+export function createComplementGroup(data: { name: string; min_choices: number; max_choices: number; product_id: string }): Promise<unknown> {
+  return request('/products/complement_group', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+// POST novo complemento
+export function createComplement(data: { name: string; extra_price: number; group_id: string; is_available: boolean }): Promise<unknown> {
+  return request('/products/complement', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+// DELETE produto ou complemento
+export function deleteInventoryItem(type: 'product' | 'complement' | 'complement_group', id: string): Promise<unknown> {
+  return request(`/products/${type}/${id}`, { method: 'DELETE' });
 }

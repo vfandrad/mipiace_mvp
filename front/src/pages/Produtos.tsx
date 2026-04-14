@@ -1,141 +1,153 @@
 /**
- * Página de Produtos — CRUD para gerenciar o cardápio
- * Dados vêm da API real via useProducts
+ * Página de Produtos — Padrão PDV Profissional
+ * Hierarquia: Produto (Card) > Categoria/Grupo > Complementos
  */
 
 import { useState } from 'react';
 import { Header } from '@/components/layout/Header';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Trash2 } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
-import { useProducts, Product } from '@/hooks/use-products';
-
-const EMPTY_FORM = { nome: '', preco: '', disponivel: true };
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
+import { useProducts } from '@/hooks/use-products';
+import { ApiProduct, ApiComplement } from '@/types/order';
+import { ProductsHeader } from '@/components/products/ProductsHeader';
+import { GroupCard } from '@/components/products/GroupCard';
+import { CreateProductDialog } from '@/components/products/CreateProductDialog';
+import { CreateGroupDialog } from '@/components/products/CreateGroupDialog';
+import { CreateComplementDialog } from '@/components/products/CreateComplementDialog';
+import { EditItemSheet } from '@/components/products/EditItemSheet';
+import { DeleteConfirmDialog } from '@/components/products/DeleteConfirmDialog';
+import { Pencil, Trash2, FolderPlus } from 'lucide-react';
 
 const Produtos = () => {
-  const { products, isLoading, addProduct, removeProduct, isSaving } = useProducts();
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const { toast } = useToast();
+  const hook = useProducts();
+  const { products, groups, complements, isLoading } = hook;
 
-  const handleSave = async () => {
-    if (!form.nome.trim() || !form.preco) {
-      toast({ title: 'Preencha todos os campos', variant: 'destructive' });
-      return;
-    }
-    const preco = parseFloat(form.preco);
-    if (isNaN(preco) || preco <= 0) {
-      toast({ title: 'Preço inválido', variant: 'destructive' });
-      return;
-    }
+  const [showNewProduct, setShowNewProduct] = useState(false);
+  const [newGroupProduct, setNewGroupProduct] = useState<{ id: string; name: string } | null>(null);
+  const [newComplementGroupId, setNewComplementGroupId] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<{ type: 'product' | 'complement'; item: ApiProduct | ApiComplement } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    type: 'product' | 'complement' | 'complement_group';
+    id: string;
+    name: string;
+    cascadeWarning?: boolean;
+  } | null>(null);
 
-    try {
-      await addProduct(form.nome.trim(), preco, form.disponivel);
-      toast({ title: 'Produto cadastrado' });
-      setDialogOpen(false);
-      setForm(EMPTY_FORM);
-    } catch {
-      toast({ title: 'Erro ao salvar produto', variant: 'destructive' });
-    }
-  };
+  const groupsByProduct = (productId: string) => groups.filter(g => g.product_id === productId);
+  const complementsByGroup = (groupId: string) => complements.filter(c => c.group_id === groupId);
 
-  const handleDelete = async (id: string) => {
-    try {
-      await removeProduct(id);
-      toast({ title: 'Produto removido' });
-    } catch {
-      toast({ title: 'Erro ao remover produto', variant: 'destructive' });
-    }
+  const handleDelete = () => {
+    if (!deleteTarget) return;
+    hook.deleteItem(deleteTarget.type, deleteTarget.id);
+    setDeleteTarget(null);
   };
 
   return (
     <div className="min-h-screen bg-background">
       <Header />
       <main className="container py-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Produtos</h1>
-            <p className="text-muted-foreground">Gerencie o cardápio da gelateria</p>
+        <ProductsHeader onNewProduct={() => setShowNewProduct(true)} />
+
+        {isLoading ? (
+          <div className="space-y-4">
+            {[1, 2, 3].map(i => <Skeleton key={i} className="h-32 w-full" />)}
           </div>
-
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={() => { setForm(EMPTY_FORM); setDialogOpen(true); }}>
-                <Plus className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Novo Produto</span>
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Novo Produto</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 pt-2">
-                <div className="space-y-2">
-                  <Label htmlFor="nome">Nome</Label>
-                  <Input id="nome" value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} placeholder="Ex: Gelato Pistache" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="preco">Preço (R$)</Label>
-                  <Input id="preco" type="number" step="0.01" min="0" value={form.preco} onChange={e => setForm(f => ({ ...f, preco: e.target.value }))} placeholder="0.00" />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="disponivel">Disponível para venda</Label>
-                  <Switch id="disponivel" checked={form.disponivel} onCheckedChange={val => setForm(f => ({ ...f, disponivel: val }))} />
-                </div>
-                <Button onClick={handleSave} className="w-full" disabled={isSaving}>
-                  {isSaving ? 'Salvando...' : 'Cadastrar Produto'}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-
-        <div className="kpi-card">
-          {isLoading ? (
-            <div className="space-y-3 p-4">
-              {[1, 2, 3].map(i => <Skeleton key={i} className="h-10 w-full" />)}
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead className="text-right">Preço</TableHead>
-                  <TableHead className="text-center">Disponível</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {products.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">Nenhum produto cadastrado</TableCell>
-                  </TableRow>
-                ) : (
-                  products.map(p => (
-                    <TableRow key={p.id}>
-                      <TableCell className="font-medium">{p.nome}</TableCell>
-                      <TableCell className="text-right">R$ {p.preco.toFixed(2)}</TableCell>
-                      <TableCell className="text-center">
-                        <span className={`inline-block w-3 h-3 rounded-full ${p.disponivel ? 'bg-[hsl(var(--status-ready))]' : 'bg-[hsl(var(--destructive))]'}`} />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(p.id)}>
+        ) : (
+          <div className="space-y-6">
+            {products.map(product => {
+              const pGroups = groupsByProduct(product.id);
+              return (
+                <Card key={product.id}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <CardTitle className="text-xl">{product.name}</CardTitle>
+                        <Badge variant="secondary">R$ {(product.base_price ?? 0).toFixed(2)}</Badge>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={product.is_available}
+                          onCheckedChange={() => hook.toggleAvailability('product', product.id, !product.is_available)}
+                          disabled={hook.isSaving}
+                        />
+                        <Button variant="ghost" size="icon" onClick={() => setEditTarget({ type: 'product', item: product })}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDeleteTarget({
+                            type: 'product', id: product.id, name: product.name,
+                            cascadeWarning: pGroups.length > 0,
+                          })}
+                        >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          )}
-        </div>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Categorias/Grupos deste produto */}
+                    {pGroups.map(group => (
+                      <div key={group.id}>
+                        <GroupCard
+                          group={group}
+                          complements={complementsByGroup(group.id)}
+                          isSaving={hook.isSaving}
+                          onToggleComplement={(c) => hook.toggleAvailability('complement', c.id, !c.is_available)}
+                          onEditComplement={(c) => setEditTarget({ type: 'complement', item: c })}
+                          onDeleteComplement={(c) => setDeleteTarget({ type: 'complement', id: c.id, name: c.name })}
+                          onDeleteGroup={() => setDeleteTarget({
+                            type: 'complement_group', id: group.id, name: group.name,
+                            cascadeWarning: complementsByGroup(group.id).length > 0,
+                          })}
+                          onAddComplement={() => setNewComplementGroupId(group.id)}
+                        />
+                      </div>
+                    ))}
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => setNewGroupProduct({ id: product.id, name: product.name })}
+                    >
+                      <FolderPlus className="h-4 w-4 mr-2" />
+                      Nova Categoria para "{product.name}"
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Dialogs */}
+        <CreateProductDialog open={showNewProduct} onOpenChange={setShowNewProduct} onCreate={hook.createProduct} />
+        <CreateGroupDialog
+          open={!!newGroupProduct}
+          onOpenChange={(open) => !open && setNewGroupProduct(null)}
+          productId={newGroupProduct?.id ?? ''}
+          productName={newGroupProduct?.name ?? ''}
+          onCreate={hook.createGroup}
+        />
+        <CreateComplementDialog
+          open={!!newComplementGroupId}
+          onOpenChange={(open) => !open && setNewComplementGroupId(null)}
+          groupId={newComplementGroupId ?? ''}
+          onCreate={hook.createComplement}
+        />
+        <EditItemSheet editTarget={editTarget} onClose={() => setEditTarget(null)} onSave={hook.editItem} />
+        <DeleteConfirmDialog
+          open={!!deleteTarget}
+          name={deleteTarget?.name ?? ''}
+          cascadeWarning={deleteTarget?.cascadeWarning}
+          onOpenChange={(open) => !open && setDeleteTarget(null)}
+          onConfirm={handleDelete}
+        />
       </main>
     </div>
   );

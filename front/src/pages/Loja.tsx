@@ -1,25 +1,28 @@
 /**
  * Página de Produção — quadro Kanban para gerenciar pedidos
+ * Carrega inventário para resolver nomes dos complementos
  */
 
 import { Header } from '@/components/layout/Header';
 import { KanbanColumn } from '@/components/production/KanbanColumn';
 import { OrderStatus } from '@/types/order';
 import { useOrders } from '@/hooks/use-orders';
+import { useProducts } from '@/hooks/use-products';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
   novo: 'Novo',
-  producao: 'Em Produção',
-  pronto: 'Pronto',
-  entregue: 'Entregue',
+  preparando: 'Preparando',
+  entrega: 'Saiu p/ Entrega',
+  finalizado: 'Finalizado',
 };
 
-const KANBAN_STATUSES: OrderStatus[] = ['novo', 'producao', 'pronto', 'entregue'];
+const KANBAN_STATUSES: OrderStatus[] = ['novo', 'preparando', 'entrega', 'finalizado'];
 
 const Loja = () => {
   const { orders, isLoading, changeStatus } = useOrders();
+  const { complementMap } = useProducts();
   const { toast } = useToast();
 
   const handleStatusChange = (orderId: string, newStatus: OrderStatus) => {
@@ -49,6 +52,7 @@ const Loja = () => {
                 key={status}
                 status={status}
                 orders={orders.filter(o => o.status === status)}
+                complementMap={complementMap}
                 onStatusChange={handleStatusChange}
               />
             ))}
