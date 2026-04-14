@@ -63,11 +63,17 @@ export function createProduct(data: { name: string; base_price: number; is_avail
   });
 }
 
-// POST novo grupo de complementos
-export function createComplementGroup(data: { name: string; min_choices: number; max_choices: number; product_id: string }): Promise<unknown> {
+// Localize a função createComplementGroup e adicione o is_required
+export function createComplementGroup(data: { 
+  name: string; 
+  min_choices: number; 
+  max_choices: number; 
+  is_required: boolean; // Adicionado
+  product_id: string 
+}): Promise<unknown> {
   return request('/products/complement_group', {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify(data), // Agora o JSON vai completo
   });
 }
 

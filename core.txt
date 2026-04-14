@@ -1,0 +1,918 @@
+
+===== C:\Users\victo\mipiace_mvp\front\src\hooks\use-mobile.tsx =====
+import * as React from "react";
+
+const MOBILE_BREAKPOINT = 768;
+
+export function useIsMobile() {
+  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined);
+
+  React.useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
+    const onChange = () => {
+      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    };
+    mql.addEventListener("change", onChange);
+    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+
+  return !!isMobile;
+}
+
+
+===== C:\Users\victo\mipiace_mvp\front\src\hooks\use-orders.ts =====
+/**
+ * Hook para buscar e atualizar pedidos via API
+ * Converte o formato da API para o formato do frontend
+ */
+
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { fetchOrders, updateOrderStatus } from '@/lib/api';
+import { Order, OrderStatus, ApiOrder } from '@/types/order';
+
+function toOrder(api: ApiOrder): Order {
+  return {
+    id: api.id,
+    customerName: api.customer_name ?? '',
+    customerPhone: api.customer_phone,
+    totalPrice: api.total_price ?? 0,
+    address: {
+      rua: api.rua ?? '',
+      numero: api.numero ?? '',
+      bairro: api.bairro ?? '',
+      complemento: api.complemento_endereco,
+    },
+    status: api.status as OrderStatus,
+    paymentStatus: api.payment_status as 'pago' | 'pendente',
+    createdAt: new Date(api.created_at),
+    items: api.order_items ?? [],
+  };
+}
+
+export function useOrders() {
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
+    queryKey: ['orders'],
+    queryFn: fetchOrders,
+    select: (data) => (data ?? []).map(toOrder),
+    refetchInterval: 15000,
+  });
+
+  const mutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: OrderStatus }) =>
+      updateOrderStatus(id, status),
+    // Atualização otimista
+    onMutate: async ({ id, status }) => {
+      await queryClient.cancelQueries({ queryKey: ['orders'] });
+      const previous = queryClient.getQueryData<ApiOrder[]>(['orders']);
+      queryClient.setQueryData<ApiOrder[]>(['orders'], (old) =>
+        old?.map((o) => (o.id === id ? { ...o, status } : o))
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(['orders'], context.previous);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+    },
+  });
+
+  return {
+    orders: query.data ?? [],
+    isLoading: query.isLoading,
+    error: query.error,
+    changeStatus: (id: string, status: OrderStatus) => mutation.mutate({ id, status }),
+  };
+}
+
+
+===== C:\Users\victo\mipiace_mvp\front\src\hooks\use-products.ts =====
+/**
+ * Hook para inventário: CRUD completo
+ * Grupos agora são vinculados a produtos (product_id) com deleção em cascata
+ */
+
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  fetchInventory,
+  patchInventoryItem,
+  createProduct,
+  createComplementGroup,
+  createComplement,
+  deleteInventoryItem,
+} from '@/lib/api';
+import { InventoryResponse, ApiComplement } from '@/types/order';
+import { toast } from 'sonner';
+
+export function useProducts() {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['inventory'] });
+
+  const query = useQuery({
+    queryKey: ['inventory'],
+    queryFn: fetchInventory,
+  });
+
+  const data: InventoryResponse = query.data ?? { products: [], groups: [], complements: [] };
+
+  const complementMap = new Map<string, ApiComplement>();
+  for (const c of data.complements) {
+    complementMap.set(c.id, c);
+  }
+
+  // Toggle disponibilidade
+  const toggleMutation = useMutation({
+    mutationFn: ({ type, id, is_available }: { type: 'product' | 'complement'; id: string; is_available: boolean }) =>
+      patchInventoryItem(type, id, { is_available }),
+    onMutate: async ({ type, id, is_available }) => {
+      await queryClient.cancelQueries({ queryKey: ['inventory'] });
+      const prev = queryClient.getQueryData<InventoryResponse>(['inventory']);
+      queryClient.setQueryData<InventoryResponse>(['inventory'], (old) => {
+        if (!old) return old;
+        if (type === 'product') {
+          return { ...old, products: old.products.map(p => p.id === id ? { ...p, is_available } : p) };
+        }
+        return { ...old, complements: old.complements.map(c => c.id === id ? { ...c, is_available } : c) };
+      });
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(['inventory'], ctx.prev);
+      toast.error('Erro ao atualizar disponibilidade');
+    },
+    onSettled: invalidate,
+  });
+
+  // Editar item (PATCH)
+  const editMutation = useMutation({
+    mutationFn: ({ type, id, data }: { type: 'product' | 'complement'; id: string; data: Record<string, unknown> }) =>
+      patchInventoryItem(type, id, data as any),
+    onSuccess: () => { toast.success('Item atualizado!'); invalidate(); },
+    onError: () => toast.error('Erro ao atualizar item'),
+  });
+
+  // Criar produto
+  const createProductMutation = useMutation({
+    mutationFn: createProduct,
+    onSuccess: () => { toast.success('Produto criado!'); invalidate(); },
+    onError: () => toast.error('Erro ao criar produto'),
+  });
+
+  // Criar grupo (agora com product_id)
+  const createGroupMutation = useMutation({
+    mutationFn: (data: { name: string; min_choices: number; max_choices: number; product_id: string }) =>
+      createComplementGroup(data),
+    onSuccess: () => { toast.success('Categoria criada!'); invalidate(); },
+    onError: () => toast.error('Erro ao criar categoria'),
+  });
+
+  // Criar complemento
+  const createComplementMutation = useMutation({
+    mutationFn: createComplement,
+    onSuccess: () => { toast.success('Complemento criado!'); invalidate(); },
+    onError: () => toast.error('Erro ao criar complemento'),
+  });
+
+  // Deletar item (product, complement ou complement_group — cascata no banco)
+  const deleteItemMutation = useMutation({
+    mutationFn: ({ type, id }: { type: 'product' | 'complement' | 'complement_group'; id: string }) =>
+      deleteInventoryItem(type, id),
+    onMutate: async ({ type, id }) => {
+      await queryClient.cancelQueries({ queryKey: ['inventory'] });
+      const prev = queryClient.getQueryData<InventoryResponse>(['inventory']);
+      queryClient.setQueryData<InventoryResponse>(['inventory'], (old) => {
+        if (!old) return old;
+        if (type === 'product') {
+          // Cascade: remove product + its groups + their complements
+          const groupIds = old.groups.filter(g => g.product_id === id).map(g => g.id);
+          return {
+            ...old,
+            products: old.products.filter(p => p.id !== id),
+            groups: old.groups.filter(g => g.product_id !== id),
+            complements: old.complements.filter(c => !groupIds.includes(c.group_id)),
+          };
+        }
+        if (type === 'complement_group') {
+          return {
+            ...old,
+            groups: old.groups.filter(g => g.id !== id),
+            complements: old.complements.filter(c => c.group_id !== id),
+          };
+        }
+        return { ...old, complements: old.complements.filter(c => c.id !== id) };
+      });
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(['inventory'], ctx.prev);
+      toast.error('Erro ao excluir item');
+    },
+    onSuccess: () => toast.success('Item excluído!'),
+    onSettled: invalidate,
+  });
+
+  return {
+    products: data.products,
+    groups: data.groups,
+    complements: data.complements,
+    complementMap,
+    isLoading: query.isLoading,
+    error: query.error,
+    toggleAvailability: (type: 'product' | 'complement', id: string, is_available: boolean) =>
+      toggleMutation.mutate({ type, id, is_available }),
+    editItem: (type: 'product' | 'complement', id: string, data: Record<string, unknown>) =>
+      editMutation.mutateAsync({ type, id, data }),
+    createProduct: (data: { name: string; base_price: number; is_available: boolean }) =>
+      createProductMutation.mutateAsync(data),
+    createGroup: (data: { name: string; min_choices: number; max_choices: number; product_id: string }) =>
+      createGroupMutation.mutateAsync(data),
+    createComplement: (data: { name: string; extra_price: number; group_id: string; is_available: boolean }) =>
+      createComplementMutation.mutateAsync(data),
+    deleteItem: (type: 'product' | 'complement' | 'complement_group', id: string) =>
+      deleteItemMutation.mutate({ type, id }),
+    isSaving: toggleMutation.isPending || editMutation.isPending || deleteItemMutation.isPending,
+  };
+}
+
+
+===== C:\Users\victo\mipiace_mvp\front\src\hooks\use-toast.ts =====
+import * as React from "react";
+
+import type { ToastActionElement, ToastProps } from "@/components/ui/toast";
+
+const TOAST_LIMIT = 1;
+const TOAST_REMOVE_DELAY = 1000000;
+
+type ToasterToast = ToastProps & {
+  id: string;
+  title?: React.ReactNode;
+  description?: React.ReactNode;
+  action?: ToastActionElement;
+};
+
+const actionTypes = {
+  ADD_TOAST: "ADD_TOAST",
+  UPDATE_TOAST: "UPDATE_TOAST",
+  DISMISS_TOAST: "DISMISS_TOAST",
+  REMOVE_TOAST: "REMOVE_TOAST",
+} as const;
+
+let count = 0;
+
+function genId() {
+  count = (count + 1) % Number.MAX_SAFE_INTEGER;
+  return count.toString();
+}
+
+type ActionType = typeof actionTypes;
+
+type Action =
+  | {
+      type: ActionType["ADD_TOAST"];
+      toast: ToasterToast;
+    }
+  | {
+      type: ActionType["UPDATE_TOAST"];
+      toast: Partial<ToasterToast>;
+    }
+  | {
+      type: ActionType["DISMISS_TOAST"];
+      toastId?: ToasterToast["id"];
+    }
+  | {
+      type: ActionType["REMOVE_TOAST"];
+      toastId?: ToasterToast["id"];
+    };
+
+interface State {
+  toasts: ToasterToast[];
+}
+
+const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+
+const addToRemoveQueue = (toastId: string) => {
+  if (toastTimeouts.has(toastId)) {
+    return;
+  }
+
+  const timeout = setTimeout(() => {
+    toastTimeouts.delete(toastId);
+    dispatch({
+      type: "REMOVE_TOAST",
+      toastId: toastId,
+    });
+  }, TOAST_REMOVE_DELAY);
+
+  toastTimeouts.set(toastId, timeout);
+};
+
+export const reducer = (state: State, action: Action): State => {
+  switch (action.type) {
+    case "ADD_TOAST":
+      return {
+        ...state,
+        toasts: [action.toast, ...state.toasts].slice(0, TOAST_LIMIT),
+      };
+
+    case "UPDATE_TOAST":
+      return {
+        ...state,
+        toasts: state.toasts.map((t) => (t.id === action.toast.id ? { ...t, ...action.toast } : t)),
+      };
+
+    case "DISMISS_TOAST": {
+      const { toastId } = action;
+
+      // ! Side effects ! - This could be extracted into a dismissToast() action,
+      // but I'll keep it here for simplicity
+      if (toastId) {
+        addToRemoveQueue(toastId);
+      } else {
+        state.toasts.forEach((toast) => {
+          addToRemoveQueue(toast.id);
+        });
+      }
+
+      return {
+        ...state,
+        toasts: state.toasts.map((t) =>
+          t.id === toastId || toastId === undefined
+            ? {
+                ...t,
+                open: false,
+              }
+            : t,
+        ),
+      };
+    }
+    case "REMOVE_TOAST":
+      if (action.toastId === undefined) {
+        return {
+          ...state,
+          toasts: [],
+        };
+      }
+      return {
+        ...state,
+        toasts: state.toasts.filter((t) => t.id !== action.toastId),
+      };
+  }
+};
+
+const listeners: Array<(state: State) => void> = [];
+
+let memoryState: State = { toasts: [] };
+
+function dispatch(action: Action) {
+  memoryState = reducer(memoryState, action);
+  listeners.forEach((listener) => {
+    listener(memoryState);
+  });
+}
+
+type Toast = Omit<ToasterToast, "id">;
+
+function toast({ ...props }: Toast) {
+  const id = genId();
+
+  const update = (props: ToasterToast) =>
+    dispatch({
+      type: "UPDATE_TOAST",
+      toast: { ...props, id },
+    });
+  const dismiss = () => dispatch({ type: "DISMISS_TOAST", toastId: id });
+
+  dispatch({
+    type: "ADD_TOAST",
+    toast: {
+      ...props,
+      id,
+      open: true,
+      onOpenChange: (open) => {
+        if (!open) dismiss();
+      },
+    },
+  });
+
+  return {
+    id: id,
+    dismiss,
+    update,
+  };
+}
+
+function useToast() {
+  const [state, setState] = React.useState<State>(memoryState);
+
+  React.useEffect(() => {
+    listeners.push(setState);
+    return () => {
+      const index = listeners.indexOf(setState);
+      if (index > -1) {
+        listeners.splice(index, 1);
+      }
+    };
+  }, [state]);
+
+  return {
+    ...state,
+    toast,
+    dismiss: (toastId?: string) => dispatch({ type: "DISMISS_TOAST", toastId }),
+  };
+}
+
+export { useToast, toast };
+
+
+===== C:\Users\victo\mipiace_mvp\front\src\lib\api.ts =====
+/**
+ * Serviço de comunicação com a API backend (api.vfandrade.com)
+ * Centraliza todas as chamadas HTTP do projeto
+ */
+
+import { InventoryResponse, ApiOrder, ApiProduct } from '@/types/order';
+
+const BASE_URL = 'https://api.vfandrade.com';
+
+// Helper genérico para fetch com tratamento de erro
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+  });
+  if (!res.ok) throw new Error(`Erro ${res.status}: ${res.statusText}`);
+  return res.json();
+}
+
+// ========================================
+// Pedidos
+// ========================================
+
+export function fetchOrders(): Promise<ApiOrder[]> {
+  return request<ApiOrder[]>('/orders/');
+}
+
+export function updateOrderStatus(id: string, status: string): Promise<ApiOrder> {
+  return request<ApiOrder>(`/orders/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}
+
+// ========================================
+// Inventário (Produtos + Grupos + Complementos)
+// ========================================
+
+export function fetchInventory(): Promise<InventoryResponse> {
+  return request<InventoryResponse>('/products/');
+}
+
+/**
+ * Atualiza disponibilidade ou preço de um produto/complemento
+ * type: 'product' | 'complement'
+ */
+export function patchInventoryItem(
+  type: 'product' | 'complement',
+  id: string,
+  data: Partial<{ is_available: boolean; base_price: number; extra_price: number; name: string }>
+): Promise<unknown> {
+  return request(`/products/${type}/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+// POST novo produto
+export function createProduct(data: { name: string; base_price: number; is_available: boolean }): Promise<ApiProduct> {
+  return request<ApiProduct>('/products/product', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+// POST novo grupo de complementos
+export function createComplementGroup(data: { name: string; min_choices: number; max_choices: number; product_id: string }): Promise<unknown> {
+  return request('/products/complement_group', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+// POST novo complemento
+export function createComplement(data: { name: string; extra_price: number; group_id: string; is_available: boolean }): Promise<unknown> {
+  return request('/products/complement', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+// DELETE produto ou complemento
+export function deleteInventoryItem(type: 'product' | 'complement' | 'complement_group', id: string): Promise<unknown> {
+  return request(`/products/${type}/${id}`, { method: 'DELETE' });
+}
+
+
+===== C:\Users\victo\mipiace_mvp\front\src\lib\mock-data.ts =====
+/**
+ * Dados mock para gráficos do Dashboard
+ * (Sem endpoint de métricas na API — usado temporariamente)
+ */
+
+import { SalesData, ProductSalesData, HourlySalesData } from '@/types/order';
+
+export const mockSalesData: SalesData[] = [
+  { date: '2024-01-20', total: 2450.00, orders: 52 },
+  { date: '2024-01-21', total: 2880.00, orders: 61 },
+  { date: '2024-01-22', total: 2120.00, orders: 45 },
+  { date: '2024-01-23', total: 3150.00, orders: 68 },
+  { date: '2024-01-24', total: 3590.00, orders: 76 },
+  { date: '2024-01-25', total: 4100.00, orders: 89 },
+  { date: '2024-01-26', total: 3850.00, orders: 82 },
+];
+
+export const mockProductSales: ProductSalesData[] = [
+  { name: 'Pote 500ml', sales: 245, revenue: 12250 },
+  { name: 'Pote 240ml', sales: 189, revenue: 5670 },
+  { name: 'Cascão Artesanal', sales: 312, revenue: 936 },
+];
+
+export const mockHourlySales: HourlySalesData[] = [
+  { hour: '10h', orders: 8, revenue: 280 },
+  { hour: '11h', orders: 15, revenue: 540 },
+  { hour: '12h', orders: 28, revenue: 1020 },
+  { hour: '13h', orders: 35, revenue: 1280 },
+  { hour: '14h', orders: 22, revenue: 790 },
+  { hour: '15h', orders: 18, revenue: 640 },
+  { hour: '16h', orders: 25, revenue: 890 },
+  { hour: '17h', orders: 32, revenue: 1160 },
+  { hour: '18h', orders: 40, revenue: 1450 },
+  { hour: '19h', orders: 38, revenue: 1380 },
+  { hour: '20h', orders: 28, revenue: 1020 },
+  { hour: '21h', orders: 15, revenue: 540 },
+];
+
+export function calculateKPIs() {
+  const today = mockSalesData[mockSalesData.length - 1];
+  const yesterday = mockSalesData[mockSalesData.length - 2];
+  const weekTotal = mockSalesData.reduce((acc, day) => acc + day.total, 0);
+  const weekOrders = mockSalesData.reduce((acc, day) => acc + day.orders, 0);
+  const ticketMedio = weekTotal / weekOrders;
+  const changePercent = ((today.total - yesterday.total) / yesterday.total) * 100;
+
+  return {
+    totalHoje: today.total,
+    totalSemana: weekTotal,
+    ticketMedio,
+    pedidosHoje: today.orders,
+    pedidosSemana: weekOrders,
+    changePercent,
+  };
+}
+
+
+===== C:\Users\victo\mipiace_mvp\front\src\lib\utils.ts =====
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+
+===== C:\Users\victo\mipiace_mvp\front\src\pages\Admin.tsx =====
+/**
+ * Dashboard (Admin) — KPIs, gráficos e pedidos recentes
+ */
+
+import { Header } from '@/components/layout/Header';
+import { KPICard } from '@/components/dashboard/KPICard';
+import { SalesChart } from '@/components/dashboard/SalesChart';
+import { ProductsChart } from '@/components/dashboard/ProductsChart';
+import { HourlyChart } from '@/components/dashboard/HourlyChart';
+import { DateFilter } from '@/components/dashboard/DateFilter';
+import { RecentOrders } from '@/components/dashboard/RecentOrders';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useOrders } from '@/hooks/use-orders';
+import { mockSalesData, mockProductSales, mockHourlySales, calculateKPIs } from '@/lib/mock-data';
+import { DollarSign, ShoppingCart, TrendingUp, Package } from 'lucide-react';
+import { OrderStatus } from '@/types/order';
+
+const Admin = () => {
+  const { orders, isLoading } = useOrders();
+  const kpis = calculateKPIs();
+
+  const statusCount: Record<OrderStatus, number> = {
+    novo: orders.filter(o => o.status === 'novo').length,
+    preparando: orders.filter(o => o.status === 'preparando').length,
+    entrega: orders.filter(o => o.status === 'entrega').length,
+    finalizado: orders.filter(o => o.status === 'finalizado').length,
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Header />
+      <main className="container py-6 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+            <p className="text-muted-foreground">Acompanhe o desempenho da sua gelateria</p>
+          </div>
+          <DateFilter />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <KPICard title="Vendas Hoje" value={kpis.totalHoje} valuePrefix="R$ " change={kpis.changePercent} changeLabel="vs ontem" icon={<DollarSign className="h-5 w-5 text-muted-foreground" />} />
+          <KPICard title="Pedidos Hoje" value={kpis.pedidosHoje} change={8.5} changeLabel="vs ontem" icon={<ShoppingCart className="h-5 w-5 text-muted-foreground" />} />
+          <KPICard title="Ticket Médio" value={kpis.ticketMedio.toFixed(2)} valuePrefix="R$ " change={3.2} changeLabel="vs semana passada" icon={<TrendingUp className="h-5 w-5 text-muted-foreground" />} />
+          <KPICard title="Vendas Semana" value={kpis.totalSemana} valuePrefix="R$ " change={12.4} changeLabel="vs semana passada" icon={<Package className="h-5 w-5 text-muted-foreground" />} />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <SalesChart data={mockSalesData} />
+          <ProductsChart data={mockProductSales} />
+          <HourlyChart data={mockHourlySales} />
+          <div className="kpi-card">
+            <h3 className="font-semibold mb-4 text-sm sm:text-base">Status de Produção</h3>
+            {isLoading ? (
+              <div className="grid grid-cols-2 gap-3">
+                {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-20 rounded-lg" />)}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  { key: 'novo' as const, label: 'Novos', bg: 'bg-status-new-bg', text: 'text-status-new' },
+                  { key: 'preparando' as const, label: 'Preparando', bg: 'bg-status-production-bg', text: 'text-status-production' },
+                  { key: 'entrega' as const, label: 'Entrega', bg: 'bg-status-ready-bg', text: 'text-status-ready' },
+                  { key: 'finalizado' as const, label: 'Finalizados', bg: 'bg-status-delivered-bg', text: 'text-status-delivered' },
+                ] as const).map(s => (
+                  <div key={s.key} className={`p-3 sm:p-4 rounded-lg ${s.bg}`}>
+                    <p className={`text-2xl sm:text-3xl font-bold ${s.text}`}>{statusCount[s.key]}</p>
+                    <p className={`text-xs sm:text-sm ${s.text}/80 mt-1`}>{s.label}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {isLoading ? (
+          <Skeleton className="h-48 rounded-lg" />
+        ) : (
+          <RecentOrders orders={orders} />
+        )}
+      </main>
+    </div>
+  );
+};
+
+export default Admin;
+
+
+===== C:\Users\victo\mipiace_mvp\front\src\pages\Loja.tsx =====
+/**
+ * Página de Produção — quadro Kanban para gerenciar pedidos
+ * Carrega inventário para resolver nomes dos complementos
+ */
+
+import { Header } from '@/components/layout/Header';
+import { KanbanColumn } from '@/components/production/KanbanColumn';
+import { OrderStatus } from '@/types/order';
+import { useOrders } from '@/hooks/use-orders';
+import { useProducts } from '@/hooks/use-products';
+import { useToast } from '@/hooks/use-toast';
+import { Skeleton } from '@/components/ui/skeleton';
+
+const STATUS_LABELS: Record<OrderStatus, string> = {
+  novo: 'Novo',
+  preparando: 'Preparando',
+  entrega: 'Saiu p/ Entrega',
+  finalizado: 'Finalizado',
+};
+
+const KANBAN_STATUSES: OrderStatus[] = ['novo', 'preparando', 'entrega', 'finalizado'];
+
+const Loja = () => {
+  const { orders, isLoading, changeStatus } = useOrders();
+  const { complementMap } = useProducts();
+  const { toast } = useToast();
+
+  const handleStatusChange = (orderId: string, newStatus: OrderStatus) => {
+    changeStatus(orderId, newStatus);
+    toast({ title: 'Status atualizado', description: `Pedido movido para ${STATUS_LABELS[newStatus]}` });
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Header />
+      <main className="container py-6">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold tracking-tight">Produção</h1>
+          <p className="text-muted-foreground">Gerencie o fluxo de pedidos</p>
+        </div>
+
+        {isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            {KANBAN_STATUSES.map(s => (
+              <Skeleton key={s} className="h-64 rounded-lg" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            {KANBAN_STATUSES.map(status => (
+              <KanbanColumn
+                key={status}
+                status={status}
+                orders={orders.filter(o => o.status === status)}
+                complementMap={complementMap}
+                onStatusChange={handleStatusChange}
+              />
+            ))}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+};
+
+export default Loja;
+
+
+===== C:\Users\victo\mipiace_mvp\front\src\pages\NotFound.tsx =====
+/**
+ * Página 404 — exibida quando a rota não existe
+ */
+
+const NotFound = () => (
+  <div className="flex min-h-screen items-center justify-center bg-muted">
+    <div className="text-center">
+      <h1 className="mb-4 text-4xl font-bold">404</h1>
+      <p className="mb-4 text-xl text-muted-foreground">Página não encontrada</p>
+      <a href="/" className="text-primary underline hover:text-primary/90">Voltar ao início</a>
+    </div>
+  </div>
+);
+
+export default NotFound;
+
+
+===== C:\Users\victo\mipiace_mvp\front\src\pages\Produtos.tsx =====
+/**
+ * Página de Produtos — Padrão PDV Profissional
+ * Hierarquia: Produto (Card) > Categoria/Grupo > Complementos
+ */
+
+import { useState } from 'react';
+import { Header } from '@/components/layout/Header';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
+import { useProducts } from '@/hooks/use-products';
+import { ApiProduct, ApiComplement } from '@/types/order';
+import { ProductsHeader } from '@/components/products/ProductsHeader';
+import { GroupCard } from '@/components/products/GroupCard';
+import { CreateProductDialog } from '@/components/products/CreateProductDialog';
+import { CreateGroupDialog } from '@/components/products/CreateGroupDialog';
+import { CreateComplementDialog } from '@/components/products/CreateComplementDialog';
+import { EditItemSheet } from '@/components/products/EditItemSheet';
+import { DeleteConfirmDialog } from '@/components/products/DeleteConfirmDialog';
+import { Pencil, Trash2, FolderPlus } from 'lucide-react';
+
+const Produtos = () => {
+  const hook = useProducts();
+  const { products, groups, complements, isLoading } = hook;
+
+  const [showNewProduct, setShowNewProduct] = useState(false);
+  const [newGroupProduct, setNewGroupProduct] = useState<{ id: string; name: string } | null>(null);
+  const [newComplementGroupId, setNewComplementGroupId] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<{ type: 'product' | 'complement'; item: ApiProduct | ApiComplement } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    type: 'product' | 'complement' | 'complement_group';
+    id: string;
+    name: string;
+    cascadeWarning?: boolean;
+  } | null>(null);
+
+  const groupsByProduct = (productId: string) => groups.filter(g => g.product_id === productId);
+  const complementsByGroup = (groupId: string) => complements.filter(c => c.group_id === groupId);
+
+  const handleDelete = () => {
+    if (!deleteTarget) return;
+    hook.deleteItem(deleteTarget.type, deleteTarget.id);
+    setDeleteTarget(null);
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Header />
+      <main className="container py-6 space-y-6">
+        <ProductsHeader onNewProduct={() => setShowNewProduct(true)} />
+
+        {isLoading ? (
+          <div className="space-y-4">
+            {[1, 2, 3].map(i => <Skeleton key={i} className="h-32 w-full" />)}
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {products.map(product => {
+              const pGroups = groupsByProduct(product.id);
+              return (
+                <Card key={product.id}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <CardTitle className="text-xl">{product.name}</CardTitle>
+                        <Badge variant="secondary">R$ {(product.base_price ?? 0).toFixed(2)}</Badge>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={product.is_available}
+                          onCheckedChange={() => hook.toggleAvailability('product', product.id, !product.is_available)}
+                          disabled={hook.isSaving}
+                        />
+                        <Button variant="ghost" size="icon" onClick={() => setEditTarget({ type: 'product', item: product })}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDeleteTarget({
+                            type: 'product', id: product.id, name: product.name,
+                            cascadeWarning: pGroups.length > 0,
+                          })}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Categorias/Grupos deste produto */}
+                    {pGroups.map(group => (
+                      <div key={group.id}>
+                        <GroupCard
+                          group={group}
+                          complements={complementsByGroup(group.id)}
+                          isSaving={hook.isSaving}
+                          onToggleComplement={(c) => hook.toggleAvailability('complement', c.id, !c.is_available)}
+                          onEditComplement={(c) => setEditTarget({ type: 'complement', item: c })}
+                          onDeleteComplement={(c) => setDeleteTarget({ type: 'complement', id: c.id, name: c.name })}
+                          onDeleteGroup={() => setDeleteTarget({
+                            type: 'complement_group', id: group.id, name: group.name,
+                            cascadeWarning: complementsByGroup(group.id).length > 0,
+                          })}
+                          onAddComplement={() => setNewComplementGroupId(group.id)}
+                        />
+                      </div>
+                    ))}
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => setNewGroupProduct({ id: product.id, name: product.name })}
+                    >
+                      <FolderPlus className="h-4 w-4 mr-2" />
+                      Nova Categoria para "{product.name}"
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Dialogs */}
+        <CreateProductDialog open={showNewProduct} onOpenChange={setShowNewProduct} onCreate={hook.createProduct} />
+        <CreateGroupDialog
+          open={!!newGroupProduct}
+          onOpenChange={(open) => !open && setNewGroupProduct(null)}
+          productId={newGroupProduct?.id ?? ''}
+          productName={newGroupProduct?.name ?? ''}
+          onCreate={hook.createGroup}
+        />
+        <CreateComplementDialog
+          open={!!newComplementGroupId}
+          onOpenChange={(open) => !open && setNewComplementGroupId(null)}
+          groupId={newComplementGroupId ?? ''}
+          onCreate={hook.createComplement}
+        />
+        <EditItemSheet editTarget={editTarget} onClose={() => setEditTarget(null)} onSave={hook.editItem} />
+        <DeleteConfirmDialog
+          open={!!deleteTarget}
+          name={deleteTarget?.name ?? ''}
+          cascadeWarning={deleteTarget?.cascadeWarning}
+          onOpenChange={(open) => !open && setDeleteTarget(null)}
+          onConfirm={handleDelete}
+        />
+      </main>
+    </div>
+  );
+};
+
+export default Produtos;
+

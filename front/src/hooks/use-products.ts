@@ -69,12 +69,23 @@ export function useProducts() {
     onError: () => toast.error('Erro ao criar produto'),
   });
 
-  // Criar grupo (agora com product_id)
+  // Dentro do useProducts, atualize a mutation:
   const createGroupMutation = useMutation({
-    mutationFn: (data: { name: string; min_choices: number; max_choices: number; product_id: string }) =>
-      createComplementGroup(data),
-    onSuccess: () => { toast.success('Categoria criada!'); invalidate(); },
-    onError: () => toast.error('Erro ao criar categoria'),
+    mutationFn: (data: { 
+      name: string; 
+      min_choices: number; 
+      max_choices: number; 
+      is_required: boolean; // Certifique-se de que este campo está aqui
+      product_id: string 
+    }) => createComplementGroup(data),
+    onSuccess: () => { 
+      toast.success('Categoria criada!'); 
+      invalidate(); 
+    },
+    onError: (error) => {
+      console.error("Erro na API:", error);
+      toast.error('Erro ao criar categoria: verifique os campos obrigatórios');
+    },
   });
 
   // Criar complemento
