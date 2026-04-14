@@ -1,131 +1,143 @@
 import { useState } from 'react';
+
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+
 import { Button } from '@/components/ui/button';
+
 import { Input } from '@/components/ui/input';
+
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch'; // Certifique-se de que este componente existe em components/ui
+
+
 
 interface Props {
+
   open: boolean;
+
   onOpenChange: (open: boolean) => void;
+
   productId: string;
+
   productName: string;
-  // ATUALIZADO: Agora aceita is_required
-  onCreate: (data: { 
-    name: string; 
-    min_choices: number; 
-    max_choices: number; 
-    is_required: boolean; 
-    product_id: string 
-  }) => Promise<unknown>;
+
+  onCreate: (data: { name: string; min_choices: number; max_choices: number; product_id: string }) => Promise<unknown>;
+
 }
 
+
+
 export const CreateGroupDialog = ({ open, onOpenChange, productId, productName, onCreate }: Props) => {
+
   const [name, setName] = useState('');
+
   const [min, setMin] = useState('0');
+
   const [max, setMax] = useState('3');
-  const [isRequired, setIsRequired] = useState(false); // NOVO: Estado para obrigatoriedade
+
   const [loading, setLoading] = useState(false);
 
+
+
   const handleSubmit = async () => {
-    if (!name.trim() || !productId) return;
-    
+
+    if (!name.trim()) return;
+
     setLoading(true);
+
     try {
+
       await onCreate({
+
         name: name.trim(),
-        min_choices: Math.max(0, parseInt(min) || 0),
-        max_choices: Math.max(1, parseInt(max) || 1),
-        is_required: isRequired, // ENVIANDO O CAMPO FALTANTE
+
+        min_choices: parseInt(min) || 0,
+
+        max_choices: parseInt(max) || 1,
+
         product_id: productId,
+
       });
-      
-      // Resetar estados após sucesso
-      setName(''); 
-      setMin('0'); 
-      setMax('3');
-      setIsRequired(false);
+
+      setName(''); setMin('0'); setMax('3');
+
       onOpenChange(false);
-    } catch (error) {
-      console.error("Erro ao salvar categoria no diálogo:", error);
+
     } finally {
+
       setLoading(false);
+
     }
+
   };
 
+
+
   return (
+
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+
+      <DialogContent>
+
         <DialogHeader>
+
           <DialogTitle>Nova Categoria para "{productName}"</DialogTitle>
+
           <DialogDescription>
-            Configure as regras de escolha para os complementos deste produto.
+
+            Esta categoria pertence exclusivamente a este produto. Ex: "Sabores" do Pote 500ml é independente dos "Sabores" do Pote 1000ml.
+
           </DialogDescription>
+
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Nome da Categoria */}
+
           <div className="space-y-2">
-            <Label htmlFor="name">Nome da Categoria</Label>
-            <Input 
-              id="name"
-              value={name} 
-              onChange={e => setName(e.target.value)} 
-              placeholder="Ex: Sabores, Adicionais, Coberturas" 
-            />
+
+            <Label>Nome</Label>
+
+            <Input value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Sabores, Coberturas" />
+
           </div>
 
-          {/* Configurações de Quantidade */}
           <div className="grid grid-cols-2 gap-4">
+
             <div className="space-y-2">
-              <Label htmlFor="min">Mín. Escolhas</Label>
-              <Input 
-                id="min"
-                type="number" 
-                value={min} 
-                onChange={e => setMin(e.target.value)} 
-                min="0"
-              />
+
+              <Label>Mín. Escolhas</Label>
+
+              <Input type="number" value={min} onChange={e => setMin(e.target.value)} />
+
             </div>
+
             <div className="space-y-2">
-              <Label htmlFor="max">Máx. Escolhas</Label>
-              <Input 
-                id="max"
-                type="number" 
-                value={max} 
-                onChange={e => setMax(e.target.value)} 
-                min="1"
-              />
+
+              <Label>Máx. Escolhas</Label>
+
+              <Input type="number" value={max} onChange={e => setMax(e.target.value)} />
+
             </div>
+
           </div>
 
-          {/* Switch de Obrigatoriedade - O que faltava para alinhar com o Banco */}
-          <div className="flex items-center justify-between rounded-lg border p-3 shadow-sm">
-            <div className="space-y-0.5">
-              <Label className="text-base">Obrigatório?</Label>
-              <p className="text-[0.8rem] text-muted-foreground">
-                O cliente será forçado a escolher pelo menos um item.
-              </p>
-            </div>
-            <Switch
-              checked={isRequired}
-              onCheckedChange={setIsRequired}
-            />
-          </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button 
-            onClick={handleSubmit} 
-            disabled={loading || !name.trim() || !productId}
-          >
+
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+
+          <Button onClick={handleSubmit} disabled={loading || !name.trim()}>
+
             {loading ? 'Criando...' : 'Criar Categoria'}
+
           </Button>
+
         </DialogFooter>
+
       </DialogContent>
+
     </Dialog>
+
   );
+
 };
