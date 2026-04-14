@@ -12,17 +12,21 @@ import {
 interface Props {
   open: boolean;
   name: string;
+  cascadeWarning?: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
 }
 
-export const DeleteConfirmDialog = ({ open, name, onOpenChange, onConfirm }: Props) => (
+export const DeleteConfirmDialog = ({ open, name, cascadeWarning, onOpenChange, onConfirm }: Props) => (
   <AlertDialog open={open} onOpenChange={onOpenChange}>
     <AlertDialogContent>
       <AlertDialogHeader>
         <AlertDialogTitle>Tem certeza que deseja excluir?</AlertDialogTitle>
         <AlertDialogDescription>
-          O item <strong>"{name}"</strong> será removido permanentemente. Esta ação não pode ser desfeita.
+          {cascadeWarning
+            ? <>Isso excluirá <strong>"{name}"</strong> e <strong>todos os itens/sabores dentro dela</strong>. Esta ação não pode ser desfeita.</>
+            : <>O item <strong>"{name}"</strong> será removido permanentemente. Esta ação não pode ser desfeita.</>
+          }
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>

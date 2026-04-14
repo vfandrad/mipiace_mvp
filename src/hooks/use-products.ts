@@ -1,6 +1,6 @@
 /**
  * Hook para inventário: CRUD completo
- * GET /products/, POST, PATCH, DELETE
+ * Grupos agora são vinculados a produtos (product_id) com deleção em cascata
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -11,7 +11,6 @@ import {
   createComplementGroup,
   createComplement,
   deleteInventoryItem,
-  deleteComplementGroup,
 } from '@/lib/api';
 import { InventoryResponse, ApiComplement } from '@/types/order';
 import { toast } from 'sonner';
@@ -70,7 +69,7 @@ export function useProducts() {
     onError: () => toast.error('Erro ao criar produto'),
   });
 
-  // Criar grupo
+  // Criar grupo (agora com product_id)
   const createGroupMutation = useMutation({
     mutationFn: createComplementGroup,
     onSuccess: () => { toast.success('Categoria criada!'); invalidate(); },
@@ -84,9 +83,9 @@ export function useProducts() {
     onError: () => toast.error('Erro ao criar complemento'),
   });
 
-  // Deletar item
+  // Deletar item (product, complement ou complement_group — cascata no banco)
   const deleteItemMutation = useMutation({
-    mutationFn: ({ type, id }: { type: 'product' | 'complement'; id: string }) =>
+    mutationFn: ({ type, id }: { type: 'product' | 'complement' | 'complement_group'; id: string }) =>
       deleteInventoryItem(type, id),
     onMutate: async ({ type, id }) => {
       await queryClient.cancelQueries({ queryKey: ['inventory'] });
@@ -94,7 +93,21 @@ export function useProducts() {
       queryClient.setQueryData<InventoryResponse>(['inventory'], (old) => {
         if (!old) return old;
         if (type === 'product') {
-          return { ...old, products: old.products.filter(p => p.id !== id) };
+          // Cascade: remove product + its groups + their complements
+          const groupIds = old.groups.filter(g => g.product_id === id).map(g => g.id);
+          return {
+            ...old,
+            products: old.products.filter(p => p.id !== id),
+            groups: old.groups.filter(g => g.product_id !== id),
+            complements: old.complements.filter(c => !groupIds.includes(c.group_id)),
+          };
+        }
+        if (type === 'complement_group') {
+          return {
+            ...old,
+            groups: old.groups.filter(g => g.id !== id),
+            complements: old.complements.filter(c => c.group_id !== id),
+          };
         }
         return { ...old, complements: old.complements.filter(c => c.id !== id) };
       });
@@ -105,30 +118,6 @@ export function useProducts() {
       toast.error('Erro ao excluir item');
     },
     onSuccess: () => toast.success('Item excluído!'),
-    onSettled: invalidate,
-  });
-
-  // Deletar grupo
-  const deleteGroupMutation = useMutation({
-    mutationFn: (id: string) => deleteComplementGroup(id),
-    onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: ['inventory'] });
-      const prev = queryClient.getQueryData<InventoryResponse>(['inventory']);
-      queryClient.setQueryData<InventoryResponse>(['inventory'], (old) => {
-        if (!old) return old;
-        return {
-          ...old,
-          groups: old.groups.filter(g => g.id !== id),
-          complements: old.complements.filter(c => c.group_id !== id),
-        };
-      });
-      return { prev };
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(['inventory'], ctx.prev);
-      toast.error('Erro ao excluir categoria');
-    },
-    onSuccess: () => toast.success('Categoria excluída!'),
     onSettled: invalidate,
   });
 
@@ -145,13 +134,12 @@ export function useProducts() {
       editMutation.mutateAsync({ type, id, data }),
     createProduct: (data: { name: string; base_price: number; is_available: boolean }) =>
       createProductMutation.mutateAsync(data),
-    createGroup: (data: { name: string; min_choices: number; max_choices: number; is_required: boolean }) =>
+    createGroup: (data: { name: string; min_choices: number; max_choices: number; is_required: boolean; product_id: string }) =>
       createGroupMutation.mutateAsync(data),
     createComplement: (data: { name: string; extra_price: number; group_id: string; is_available: boolean }) =>
       createComplementMutation.mutateAsync(data),
-    deleteItem: (type: 'product' | 'complement', id: string) =>
+    deleteItem: (type: 'product' | 'complement' | 'complement_group', id: string) =>
       deleteItemMutation.mutate({ type, id }),
-    deleteGroup: (id: string) => deleteGroupMutation.mutate(id),
     isSaving: toggleMutation.isPending || editMutation.isPending || deleteItemMutation.isPending,
   };
 }

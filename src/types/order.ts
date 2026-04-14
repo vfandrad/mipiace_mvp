@@ -67,6 +67,7 @@ export interface ApiProduct {
 
 export interface ApiGroup {
   id: string;
+  product_id: string;
   name: string;
   min_choices: number;
   max_choices: number;

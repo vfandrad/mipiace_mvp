@@ -64,7 +64,7 @@ export function createProduct(data: { name: string; base_price: number; is_avail
 }
 
 // POST novo grupo de complementos
-export function createComplementGroup(data: { name: string; min_choices: number; max_choices: number; is_required: boolean }): Promise<unknown> {
+export function createComplementGroup(data: { name: string; min_choices: number; max_choices: number; is_required: boolean; product_id: string }): Promise<unknown> {
   return request('/products/complement_group', {
     method: 'POST',
     body: JSON.stringify(data),
@@ -80,11 +80,6 @@ export function createComplement(data: { name: string; extra_price: number; grou
 }
 
 // DELETE produto ou complemento
-export function deleteInventoryItem(type: 'product' | 'complement', id: string): Promise<unknown> {
+export function deleteInventoryItem(type: 'product' | 'complement' | 'complement_group', id: string): Promise<unknown> {
   return request(`/products/${type}/${id}`, { method: 'DELETE' });
-}
-
-// DELETE grupo
-export function deleteComplementGroup(id: string): Promise<unknown> {
-  return request(`/products/complement_group/${id}`, { method: 'DELETE' });
 }
