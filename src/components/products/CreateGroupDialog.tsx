@@ -8,21 +8,28 @@ import { Switch } from '@/components/ui/switch';
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreate: (data: { name: string; min_choices: number; max_choices: number }) => Promise<unknown>;
+  // ✅ ADICIONADO: is_required na tipagem da função
+  onCreate: (data: { name: string; min_choices: number; max_choices: number; is_required: boolean }) => Promise<unknown>;
 }
 
 export const CreateGroupDialog = ({ open, onOpenChange, onCreate }: Props) => {
   const [name, setName] = useState('');
   const [min, setMin] = useState('0');
   const [max, setMax] = useState('3');
+  const [isRequired, setIsRequired] = useState(false); // ✅ ADICIONADO: Novo estado
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
     if (!name.trim()) return;
     setLoading(true);
     try {
-      await onCreate({ name: name.trim(), min_choices: parseInt(min) || 0, max_choices: parseInt(max) || 1 });
-      setName(''); setMin('0'); setMax('3');
+      await onCreate({ 
+        name: name.trim(), 
+        min_choices: parseInt(min) || 0, 
+        max_choices: parseInt(max) || 1,
+        is_required: isRequired // ✅ ADICIONADO: Enviando para o banco
+      });
+      setName(''); setMin('0'); setMax('3'); setIsRequired(false);
       onOpenChange(false);
     } finally {
       setLoading(false);
@@ -49,6 +56,20 @@ export const CreateGroupDialog = ({ open, onOpenChange, onCreate }: Props) => {
               <Label>Máx. Escolhas</Label>
               <Input type="number" value={max} onChange={e => setMax(e.target.value)} />
             </div>
+          </div>
+
+          {/* ✅ NOVO CAMPO: Switch para Obrigatório */}
+          <div className="flex items-center justify-between space-x-2 rounded-lg border p-3">
+            <div className="space-y-0.5">
+              <Label>Seleção Obrigatória?</Label>
+              <p className="text-sm text-muted-foreground">
+                O cliente não poderá avançar sem escolher.
+              </p>
+            </div>
+            <Switch 
+              checked={isRequired} 
+              onCheckedChange={setIsRequired} 
+            />
           </div>
         </div>
         <DialogFooter>
