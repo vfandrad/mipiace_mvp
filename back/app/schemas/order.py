@@ -1,7 +1,6 @@
 from pydantic import BaseModel
 from typing import List, Optional
 
-# Novo schema para padronizar o endereço vindo do n8n
 class AddressSchema(BaseModel):
     rua: Optional[str] = None
     numero: Optional[str] = None
@@ -10,18 +9,27 @@ class AddressSchema(BaseModel):
 
 class OrderItemSchema(BaseModel):
     product_id: str
-    selected_complement_ids: List[str] = [] # Agora suporta a lista de complementos
+    selected_complement_ids: List[str] = []
     quantity: int = 1
     details: Optional[str] = None
 
-# Único schema de criação de pedido para toda a aplicação
 class OrderCreate(BaseModel):
     customer_name: str
     customer_phone: str
     total_price: float
-    endereco: Optional[AddressSchema] = None # Adicionado para corrigir a incoerência
+    chat_id: Optional[str] = None
+    endereco: Optional[AddressSchema] = None
     items: List[OrderItemSchema]
+    payment_id: Optional[str] = None
+    payment_link: Optional[str] = None
+    payment_method: Optional[str] = "pix"
 
 class OrderUpdateStatus(BaseModel):
     status: Optional[str] = None
     payment_status: Optional[str] = None
+
+# Schema para o n8n salvar os dados do Pix após gerá-lo
+class OrderUpdatePayment(BaseModel):
+    payment_id: str
+    payment_link: str
+    payment_method: str = "pix"

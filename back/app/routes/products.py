@@ -4,21 +4,19 @@ from app.database import get_db
 router = APIRouter(prefix="/products", tags=["Inventory"])
 
 # --- OUTPUT PARA O N8N (CARDÁPIO GENÉRICO) ---
+# No products.py, atualize o menu-summary:
 @router.get("/menu-summary")
 async def get_menu_summary(db=Depends(get_db)):
-    """
-    Retorna a estrutura completa para o n8n. 
-    A IA usará esses IDs para identificar o que o cliente quer.
-    """
     try:
-        products = db.table("products").select("id, name, base_price").eq("is_available", True).execute()
-        groups = db.table("complement_groups").select("id, name, min_choices, max_choices, is_required").execute()
-        complements = db.table("complements").select("id, group_id, name, extra_price").eq("is_available", True).execute()
+        # Buscamos os dados
+        p = db.table("products").select("id, name, base_price").eq("is_available", True).execute()
+        g = db.table("complement_groups").select("id, product_id, name, min_choices, max_choices, is_required").execute()
+        c = db.table("complements").select("id, group_id, name, extra_price").eq("is_available", True).execute()
         
         return {
-            "products": products.data,
-            "groups": groups.data,
-            "complements": complements.data
+            "products": p.data,
+            "groups": g.data,
+            "complements": c.data
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -46,12 +44,19 @@ async def update_item(type: str, id: str, data: dict, db=Depends(get_db)):
 
 @router.delete("/{type}/{id}")
 async def delete_item(type: str, id: str, db=Depends(get_db)):
-    """
-    Remove um produto ou complemento do banco.
-    type: 'product' ou 'complement'
-    """
-    table = "products" if type == "product" else "complements"
+    # Adicionamos 'complement_group' no mapeamento de tabelas
+    if type == "product":
+        table = "products"
+    elif type == "complement":
+        table = "complements"
+    elif type == "complement_group": # ADICIONADO: Para apagar a categoria
+        table = "complement_groups"
+    else:
+        raise HTTPException(status_code=400, detail="Tipo inválido")
+
     try:
+        # Se o banco estiver com ON DELETE CASCADE (como expliquei antes),
+        # apagar o grupo aqui vai limpar automaticamente os sabores dentro dele.
         res = db.table(table).delete().eq("id", id).execute()
         return {"status": "success", "message": f"{type} removido com sucesso"}
     except Exception as e:
